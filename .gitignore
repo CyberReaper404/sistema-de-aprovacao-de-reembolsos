@@ -1,0 +1,28 @@
+# Build
+bin/
+obj/
+
+# IDE
+.idea/
+.vs/
+*.user
+*.suo
+
+# Node
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Storage
+backend/storage/
+
+# Dotnet local cache
+.dotnet/
+
+# Test output
+TestResults/
+coverage/
+
