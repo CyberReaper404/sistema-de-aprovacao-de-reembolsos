@@ -29,6 +29,11 @@ public sealed class LocalAttachmentStorage : IAttachmentStorage
     {
         _ = cancellationToken;
         var path = Path.Combine(_rootPath, storedFileName);
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException("Arquivo de anexo não encontrado no armazenamento.", path);
+        }
+
         Stream stream = File.OpenRead(path);
         return Task.FromResult(stream);
     }
@@ -45,4 +50,3 @@ public sealed class LocalAttachmentStorage : IAttachmentStorage
         return Task.CompletedTask;
     }
 }
-

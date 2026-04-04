@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Reembolso.Application.Abstractions;
 using Reembolso.Application.Dtos.Auth;
+using Reembolso.Application.Exceptions;
+using Reembolso.Infrastructure.Options;
 
 namespace Reembolso.Api.Controllers;
 
@@ -12,10 +15,14 @@ public sealed class AuthController : ControllerBase
 {
     private const string RefreshCookieName = "refresh_token";
     private readonly IAuthService _authService;
+    private readonly IHostEnvironment _hostEnvironment;
+    private readonly JwtOptions _jwtOptions;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, IHostEnvironment hostEnvironment, IOptions<JwtOptions> jwtOptions)
     {
         _authService = authService;
+        _hostEnvironment = hostEnvironment;
+        _jwtOptions = jwtOptions.Value;
     }
 
     [AllowAnonymous]
@@ -24,11 +31,11 @@ public sealed class AuthController : ControllerBase
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
         var session = await _authService.LoginAsync(request, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), cancellationToken);
-        SetRefreshCookie(session.RefreshToken, session.ExpiresAt);
+        SetRefreshCookie(session.RefreshToken, session.RefreshTokenExpiresAt);
         return Ok(new
         {
             session.AccessToken,
-            session.ExpiresAt,
+            ExpiresAt = session.AccessTokenExpiresAt,
             session.User
         });
     }
@@ -40,20 +47,15 @@ public sealed class AuthController : ControllerBase
     {
         if (!Request.Cookies.TryGetValue(RefreshCookieName, out var refreshToken) || string.IsNullOrWhiteSpace(refreshToken))
         {
-            return Unauthorized(new ProblemDetails
-            {
-                Title = "Sessão inválida.",
-                Detail = "O cookie de refresh não foi encontrado.",
-                Status = StatusCodes.Status401Unauthorized
-            });
+            throw new UnauthorizedAppException("O cookie de refresh não foi encontrado.", "missing_refresh_cookie");
         }
 
         var session = await _authService.RefreshAsync(refreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), cancellationToken);
-        SetRefreshCookie(session.RefreshToken, session.ExpiresAt.AddDays(7));
+        SetRefreshCookie(session.RefreshToken, session.RefreshTokenExpiresAt);
         return Ok(new
         {
             session.AccessToken,
-            session.ExpiresAt,
+            ExpiresAt = session.AccessTokenExpiresAt,
             session.User
         });
     }
@@ -89,24 +91,26 @@ public sealed class AuthController : ControllerBase
 
     private void SetRefreshCookie(string refreshToken, DateTimeOffset expiresAt)
     {
+        var isDevelopment = _hostEnvironment.IsDevelopment();
         Response.Cookies.Append(RefreshCookieName, refreshToken, new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Lax,
-            Expires = expiresAt.AddDays(7),
+            Secure = !isDevelopment || Request.IsHttps,
+            SameSite = isDevelopment ? SameSiteMode.Lax : SameSiteMode.Strict,
+            Expires = expiresAt,
             IsEssential = true
         });
     }
 
     private void DeleteRefreshCookie()
     {
+        var isDevelopment = _hostEnvironment.IsDevelopment();
         Response.Cookies.Delete(RefreshCookieName, new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Lax
+            Secure = !isDevelopment || Request.IsHttps,
+            SameSite = isDevelopment ? SameSiteMode.Lax : SameSiteMode.Strict,
+            Expires = DateTimeOffset.UtcNow.AddDays(-_jwtOptions.RefreshTokenLifetimeDays)
         });
     }
 }
-

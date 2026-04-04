@@ -189,11 +189,15 @@ public sealed class AuthService : IAuthService
 
     private AuthSessionResponse BuildSessionResponse(User user, string refreshToken, DateTimeOffset now)
     {
+        var accessTokenExpiresAt = now.AddMinutes(_jwtOptions.AccessTokenLifetimeMinutes);
+        var refreshTokenExpiresAt = now.AddDays(_jwtOptions.RefreshTokenLifetimeDays);
+
         return new AuthSessionResponse(
             _tokenService.CreateAccessToken(user),
-            now.AddMinutes(_jwtOptions.AccessTokenLifetimeMinutes),
+            accessTokenExpiresAt,
             new AuthenticatedUserResponse(user.Id, user.FullName, user.Email, user.Role, user.PrimaryCostCenterId),
-            refreshToken);
+            refreshToken,
+            refreshTokenExpiresAt);
     }
 
     private async Task RevokeFamilyAsync(Guid familyId, CancellationToken cancellationToken)

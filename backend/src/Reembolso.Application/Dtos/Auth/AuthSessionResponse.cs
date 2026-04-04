@@ -4,9 +4,10 @@ namespace Reembolso.Application.Dtos.Auth;
 
 public sealed record AuthSessionResponse(
     string AccessToken,
-    DateTimeOffset ExpiresAt,
+    DateTimeOffset AccessTokenExpiresAt,
     AuthenticatedUserResponse User,
-    string RefreshToken);
+    string RefreshToken,
+    DateTimeOffset RefreshTokenExpiresAt);
 
 public sealed record AuthenticatedUserResponse(
     Guid Id,
@@ -14,4 +15,3 @@ public sealed record AuthenticatedUserResponse(
     string Email,
     UserRole Role,
     Guid PrimaryCostCenterId);
-

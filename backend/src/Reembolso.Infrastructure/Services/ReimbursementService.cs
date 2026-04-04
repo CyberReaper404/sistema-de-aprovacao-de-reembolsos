@@ -269,21 +269,29 @@ public sealed class ReimbursementService : IReimbursementService
         await using var uploadStream = new MemoryStream(fileBytes);
         var storedFileName = await _attachmentStorage.SaveAsync(fileName, uploadStream, cancellationToken);
 
-        var attachment = new ReimbursementAttachment(
-            entity.Id,
-            fileName,
-            storedFileName,
-            contentType,
-            sizeInBytes,
-            sha256,
-            RequireCurrentUserId(),
-            _dateTimeProvider.UtcNow);
+        try
+        {
+            var attachment = new ReimbursementAttachment(
+                entity.Id,
+                fileName,
+                storedFileName,
+                contentType,
+                sizeInBytes,
+                sha256,
+                RequireCurrentUserId(),
+                _dateTimeProvider.UtcNow);
 
-        _dbContext.ReimbursementAttachments.Add(attachment);
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.AttachmentAdded, RequestStatus.Draft, RequestStatus.Draft, RequireCurrentUserId(), fileName, _dateTimeProvider.UtcNow));
-        await _dbContext.SaveChangesAsync(cancellationToken);
+            _dbContext.ReimbursementAttachments.Add(attachment);
+            _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.AttachmentAdded, RequestStatus.Draft, RequestStatus.Draft, RequireCurrentUserId(), fileName, _dateTimeProvider.UtcNow));
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new AttachmentResponse(attachment.Id, attachment.OriginalFileName, attachment.ContentType, attachment.SizeInBytes, attachment.CreatedAt);
+            return new AttachmentResponse(attachment.Id, attachment.OriginalFileName, attachment.ContentType, attachment.SizeInBytes, attachment.CreatedAt);
+        }
+        catch
+        {
+            await _attachmentStorage.DeleteAsync(storedFileName, cancellationToken);
+            throw;
+        }
     }
 
     public async Task DeleteAttachmentAsync(Guid requestId, Guid attachmentId, CancellationToken cancellationToken)
@@ -321,8 +329,15 @@ public sealed class ReimbursementService : IReimbursementService
         var attachment = entity.Attachments.SingleOrDefault(x => x.Id == attachmentId)
             ?? throw new NotFoundAppException("Anexo não encontrado.");
 
-        var content = await _attachmentStorage.OpenReadAsync(attachment.StoredFileName, cancellationToken);
-        return new AttachmentDownloadResult(content, attachment.OriginalFileName, attachment.ContentType);
+        try
+        {
+            var content = await _attachmentStorage.OpenReadAsync(attachment.StoredFileName, cancellationToken);
+            return new AttachmentDownloadResult(content, attachment.OriginalFileName, attachment.ContentType);
+        }
+        catch (FileNotFoundException)
+        {
+            throw new NotFoundAppException("O arquivo do anexo não foi encontrado no armazenamento.", "attachment_file_missing");
+        }
     }
 
     public async Task<IReadOnlyCollection<WorkflowActionResponse>> GetWorkflowActionsAsync(Guid requestId, CancellationToken cancellationToken)

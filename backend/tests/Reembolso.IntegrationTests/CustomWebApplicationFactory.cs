@@ -18,13 +18,14 @@ namespace Reembolso.IntegrationTests;
 
 public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    public static Guid CostCenterId { get; private set; }
-    public static Guid CategoryId { get; private set; }
+    public Guid CostCenterId { get; private set; }
+    public Guid CategoryId { get; private set; }
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, configBuilder) =>
         {
             configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
@@ -71,7 +72,7 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         var response = client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password)).GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
         var payload = response.Content.ReadFromJsonAsync<LoginResponse>().GetAwaiter().GetResult()
-            ?? throw new InvalidOperationException("Resposta de login inválida.");
+            ?? throw new InvalidOperationException("Resposta de login invalida.");
 
         if (string.IsNullOrWhiteSpace(payload.AccessToken))
         {
@@ -85,13 +86,13 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         {
             var body = meResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             var authHeader = string.Join(" | ", meResponse.Headers.WwwAuthenticate.Select(x => x.ToString()));
-            throw new InvalidOperationException($"Falha ao validar sessão de teste: {(int)meResponse.StatusCode} - auth={authHeader} - token={payload.AccessToken} - body={body}");
+            throw new InvalidOperationException($"Falha ao validar sessao de teste: {(int)meResponse.StatusCode} - auth={authHeader} - token={payload.AccessToken} - body={body}");
         }
 
         return client;
     }
 
-    private static async Task SeedAsync(AppDbContext dbContext)
+    private async Task SeedAsync(AppDbContext dbContext)
     {
         if (await dbContext.Users.AnyAsync())
         {

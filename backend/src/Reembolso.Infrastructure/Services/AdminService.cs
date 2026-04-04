@@ -58,6 +58,7 @@ public sealed class AdminService : IAdminService
         }
 
         await EnsureCostCenterExistsAsync(request.PrimaryCostCenterId, cancellationToken);
+        await EnsureManagedCostCentersAreActiveAsync(request.ManagedCostCenterIds, cancellationToken);
 
         var user = new User(
             request.FullName,
@@ -82,6 +83,8 @@ public sealed class AdminService : IAdminService
             ?? throw new NotFoundAppException("Usuário não encontrado.");
 
         await EnsureCostCenterExistsAsync(request.PrimaryCostCenterId, cancellationToken);
+        await EnsureManagedCostCentersAreActiveAsync(request.ManagedCostCenterIds, cancellationToken);
+
         user.Update(request.FullName, request.Role, request.PrimaryCostCenterId, request.IsActive, _dateTimeProvider.UtcNow);
         await ReplaceManagerScopesAsync(user.Id, request.ManagedCostCenterIds, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -122,6 +125,12 @@ public sealed class AdminService : IAdminService
         var entity = new CostCenter(request.Code, request.Name, _dateTimeProvider.UtcNow);
         _dbContext.CostCenters.Add(entity);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _auditService.WriteAsync("admin.cost_center_created", "cost_center", entity.Id.ToString(), AuditSeverity.Information, new
+        {
+            entity.Code,
+            entity.Name
+        }, cancellationToken);
+
         return new CostCenterResponse(entity.Id, entity.Code, entity.Name, entity.IsActive);
     }
 
@@ -133,6 +142,13 @@ public sealed class AdminService : IAdminService
 
         entity.Update(request.Code, request.Name, request.IsActive, _dateTimeProvider.UtcNow);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _auditService.WriteAsync("admin.cost_center_updated", "cost_center", entity.Id.ToString(), AuditSeverity.Information, new
+        {
+            entity.Code,
+            entity.Name,
+            entity.IsActive
+        }, cancellationToken);
+
         return new CostCenterResponse(entity.Id, entity.Code, entity.Name, entity.IsActive);
     }
 
@@ -151,6 +167,13 @@ public sealed class AdminService : IAdminService
         var entity = new ReimbursementCategory(request.Name, request.Description, request.MaxAmount, request.ReceiptRequiredAboveAmount, _dateTimeProvider.UtcNow);
         _dbContext.ReimbursementCategories.Add(entity);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _auditService.WriteAsync("admin.category_created", "reimbursement_category", entity.Id.ToString(), AuditSeverity.Information, new
+        {
+            entity.Name,
+            entity.MaxAmount,
+            entity.ReceiptRequiredAboveAmount
+        }, cancellationToken);
+
         return new CategoryResponse(entity.Id, entity.Name, entity.Description, entity.IsActive, entity.MaxAmount, entity.ReceiptRequiredAboveAmount);
     }
 
@@ -162,6 +185,14 @@ public sealed class AdminService : IAdminService
 
         entity.Update(request.Name, request.Description, request.MaxAmount, request.ReceiptRequiredAboveAmount, request.IsActive, _dateTimeProvider.UtcNow);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _auditService.WriteAsync("admin.category_updated", "reimbursement_category", entity.Id.ToString(), AuditSeverity.Information, new
+        {
+            entity.Name,
+            entity.IsActive,
+            entity.MaxAmount,
+            entity.ReceiptRequiredAboveAmount
+        }, cancellationToken);
+
         return new CategoryResponse(entity.Id, entity.Name, entity.Description, entity.IsActive, entity.MaxAmount, entity.ReceiptRequiredAboveAmount);
     }
 
@@ -196,6 +227,28 @@ public sealed class AdminService : IAdminService
             throw new ValidationAppException("Centro de custo inválido.", new Dictionary<string, string[]>
             {
                 ["primaryCostCenterId"] = ["Centro de custo inválido."]
+            });
+        }
+    }
+
+    private async Task EnsureManagedCostCentersAreActiveAsync(IReadOnlyCollection<Guid>? managedCostCenterIds, CancellationToken cancellationToken)
+    {
+        if (managedCostCenterIds is null || managedCostCenterIds.Count == 0)
+        {
+            return;
+        }
+
+        var distinctIds = managedCostCenterIds.Distinct().ToArray();
+        var activeIds = await _dbContext.CostCenters
+            .Where(x => x.IsActive && distinctIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        if (activeIds.Count != distinctIds.Length)
+        {
+            throw new ValidationAppException("Os centros de custo informados para o gestor são inválidos.", new Dictionary<string, string[]>
+            {
+                ["managedCostCenterIds"] = ["Informe apenas centros de custo existentes e ativos."]
             });
         }
     }

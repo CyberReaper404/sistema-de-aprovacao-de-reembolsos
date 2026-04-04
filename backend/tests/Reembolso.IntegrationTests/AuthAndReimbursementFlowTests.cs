@@ -35,7 +35,7 @@ public sealed class AuthAndReimbursementFlowTests : IClassFixture<CustomWebAppli
 
         var createResponse = await client.PostAsJsonAsync("/api/reimbursements", new CreateReimbursementRequest(
             "Taxi aeroporto",
-            CustomWebApplicationFactory.CategoryId,
+            _factory.CategoryId,
             80,
             "BRL",
             new DateOnly(2026, 4, 4),
@@ -61,7 +61,7 @@ public sealed class AuthAndReimbursementFlowTests : IClassFixture<CustomWebAppli
 
         var createResponse = await collaborator.PostAsJsonAsync("/api/reimbursements", new CreateReimbursementRequest(
             "Hotel",
-            CustomWebApplicationFactory.CategoryId,
+            _factory.CategoryId,
             90,
             "BRL",
             new DateOnly(2026, 4, 5),

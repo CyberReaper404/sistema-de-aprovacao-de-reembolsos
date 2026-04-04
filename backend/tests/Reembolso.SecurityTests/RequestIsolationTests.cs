@@ -20,7 +20,7 @@ public sealed class RequestIsolationTests : IClassFixture<CustomWebApplicationFa
         using var aliceClient = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
         var createResponse = await aliceClient.PostAsJsonAsync("/api/reimbursements", new CreateReimbursementRequest(
             "Taxi",
-            CustomWebApplicationFactory.CategoryId,
+            _factory.CategoryId,
             80,
             "BRL",
             new DateOnly(2026, 4, 6),
