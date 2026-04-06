@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Reembolso.Application.Dtos.Reimbursements;
 using Reembolso.Domain.Enums;
 
@@ -26,6 +27,17 @@ public sealed class AuthAndReimbursementFlowTests : IClassFixture<CustomWebAppli
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains(response.Headers, header => header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase));
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = body.RootElement;
+
+        Assert.True(root.TryGetProperty("accessToken", out var accessToken));
+        Assert.False(string.IsNullOrWhiteSpace(accessToken.GetString()));
+        Assert.True(root.TryGetProperty("accessTokenExpiresAt", out _));
+        Assert.True(root.TryGetProperty("refreshTokenExpiresAt", out _));
+        Assert.True(root.TryGetProperty("user", out var user));
+        Assert.Equal("alice@empresa.test", user.GetProperty("email").GetString());
+        Assert.False(root.TryGetProperty("refreshToken", out _));
     }
 
     [Fact]

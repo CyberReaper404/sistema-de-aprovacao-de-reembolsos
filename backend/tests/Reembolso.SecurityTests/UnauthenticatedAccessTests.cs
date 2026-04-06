@@ -39,5 +39,12 @@ public sealed class UnauthenticatedAccessTests : IClassFixture<CustomWebApplicat
         Assert.Equal(HttpStatusCode.Unauthorized, approveResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, paymentResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, adminResponse.StatusCode);
+
+        var detailBody = await detailResponse.Content.ReadAsStringAsync();
+        var adminBody = await adminResponse.Content.ReadAsStringAsync();
+
+        Assert.Contains("\"errorCode\":\"unauthorized\"", detailBody);
+        Assert.Contains("\"traceId\":", detailBody);
+        Assert.Contains("\"errorCode\":\"unauthorized\"", adminBody);
     }
 }

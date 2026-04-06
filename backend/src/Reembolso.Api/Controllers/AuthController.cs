@@ -32,12 +32,7 @@ public sealed class AuthController : ControllerBase
     {
         var session = await _authService.LoginAsync(request, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), cancellationToken);
         SetRefreshCookie(session.RefreshToken, session.RefreshTokenExpiresAt);
-        return Ok(new
-        {
-            session.AccessToken,
-            ExpiresAt = session.AccessTokenExpiresAt,
-            session.User
-        });
+        return Ok(session);
     }
 
     [AllowAnonymous]
@@ -52,12 +47,7 @@ public sealed class AuthController : ControllerBase
 
         var session = await _authService.RefreshAsync(refreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), cancellationToken);
         SetRefreshCookie(session.RefreshToken, session.RefreshTokenExpiresAt);
-        return Ok(new
-        {
-            session.AccessToken,
-            ExpiresAt = session.AccessTokenExpiresAt,
-            session.User
-        });
+        return Ok(session);
     }
 
     [Authorize]

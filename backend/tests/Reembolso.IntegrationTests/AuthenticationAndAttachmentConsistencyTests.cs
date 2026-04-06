@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Reembolso.Application.Dtos.Reimbursements;
@@ -45,6 +46,34 @@ public sealed class AuthenticationAndAttachmentConsistencyTests : IClassFixture<
         var cookieHeader = response.Headers.GetValues("Set-Cookie").Single().ToLowerInvariant();
         Assert.Contains("refresh_token=", cookieHeader);
         Assert.DoesNotContain("samesite=strict", cookieHeader);
+    }
+
+    [Fact]
+    public async Task Refresh_DeveRetornarContratoExplicitoSemRefreshTokenNoCorpo()
+    {
+        using var client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true
+        });
+
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new { email = "alice@empresa.test", password = "Senha@123" });
+        loginResponse.EnsureSuccessStatusCode();
+
+        var refreshResponse = await client.PostAsync("/api/auth/refresh", null);
+
+        Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
+        Assert.Contains(refreshResponse.Headers, header => header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase));
+
+        using var body = JsonDocument.Parse(await refreshResponse.Content.ReadAsStringAsync());
+        var root = body.RootElement;
+
+        Assert.True(root.TryGetProperty("accessToken", out var accessToken));
+        Assert.False(string.IsNullOrWhiteSpace(accessToken.GetString()));
+        Assert.True(root.TryGetProperty("accessTokenExpiresAt", out _));
+        Assert.True(root.TryGetProperty("refreshTokenExpiresAt", out _));
+        Assert.True(root.TryGetProperty("user", out var user));
+        Assert.Equal("alice@empresa.test", user.GetProperty("email").GetString());
+        Assert.False(root.TryGetProperty("refreshToken", out _));
     }
 
     [Fact]

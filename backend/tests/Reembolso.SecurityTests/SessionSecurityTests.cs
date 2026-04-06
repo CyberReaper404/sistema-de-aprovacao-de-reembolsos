@@ -61,6 +61,8 @@ public sealed class SessionSecurityTests : IClassFixture<CustomWebApplicationFac
         var response = await client.GetAsync("/api/auth/me");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"errorCode\":\"unauthorized\"", body);
     }
 
     [Fact]
@@ -76,6 +78,8 @@ public sealed class SessionSecurityTests : IClassFixture<CustomWebApplicationFac
         var response = await client.GetAsync("/api/reimbursements?page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"errorCode\":\"unauthorized\"", body);
     }
 
     private async Task<LoginSession> RealizarLoginAsync(string email, string password)
@@ -113,11 +117,12 @@ public sealed class SessionSecurityTests : IClassFixture<CustomWebApplicationFac
     {
         using var scope = _factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var session = await dbContext.RefreshSessions
+        var session = (await dbContext.RefreshSessions
             .Include(x => x.User)
             .Where(x => x.User != null && x.User.Email == email)
+            .ToListAsync())
             .OrderByDescending(x => x.CreatedAt)
-            .FirstAsync();
+            .First();
         session.Revoke(DateTimeOffset.UtcNow);
         await dbContext.SaveChangesAsync();
     }
@@ -126,11 +131,12 @@ public sealed class SessionSecurityTests : IClassFixture<CustomWebApplicationFac
     {
         using var scope = _factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var session = await dbContext.RefreshSessions
+        var session = (await dbContext.RefreshSessions
             .Include(x => x.User)
             .Where(x => x.User != null && x.User.Email == email)
+            .ToListAsync())
             .OrderByDescending(x => x.CreatedAt)
-            .FirstAsync();
+            .First();
         dbContext.Entry(session).Property(nameof(RefreshSession.ExpiresAt)).CurrentValue = DateTimeOffset.UtcNow.AddMinutes(-1);
         await dbContext.SaveChangesAsync();
     }

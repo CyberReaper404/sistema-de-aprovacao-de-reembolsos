@@ -121,6 +121,13 @@ public sealed class AuthService : IAuthService
         {
             session.Revoke(now);
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await _auditService.WriteAsync(
+                "auth.refresh_expired",
+                "refresh_session",
+                session.Id.ToString(),
+                AuditSeverity.Warning,
+                new { session.User.IsActive },
+                cancellationToken);
             throw new UnauthorizedAppException("Sessão expirada.", "expired_refresh_token");
         }
 

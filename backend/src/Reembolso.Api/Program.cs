@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -107,6 +108,41 @@ builder.Services
                 {
                     context.Fail("Sessão inválida.");
                 }
+            },
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/problem+json";
+
+                var problem = new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Autenticação obrigatória.",
+                    Detail = "A requisição exige autenticação válida."
+                };
+
+                problem.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+                problem.Extensions["errorCode"] = "unauthorized";
+
+                await context.Response.WriteAsJsonAsync(problem, context.HttpContext.RequestAborted);
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/problem+json";
+
+                var problem = new ProblemDetails
+                {
+                    Status = StatusCodes.Status403Forbidden,
+                    Title = "Acesso negado.",
+                    Detail = "O usuário autenticado não possui permissão para acessar este recurso."
+                };
+
+                problem.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+                problem.Extensions["errorCode"] = "forbidden";
+
+                await context.Response.WriteAsJsonAsync(problem, context.HttpContext.RequestAborted);
             }
         };
     });

@@ -101,6 +101,9 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
         var response = await financeClient.GetAsync("/api/admin/audit-entries?page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"errorCode\":\"forbidden\"", body);
+        Assert.Contains("\"traceId\":", body);
     }
 
     [Fact]
