@@ -100,6 +100,7 @@ public sealed class ReimbursementService : IReimbursementService
 
     public async Task<PagedResult<ReimbursementListItemResponse>> GetPagedAsync(ReimbursementListQuery query, CancellationToken cancellationToken)
     {
+        await EnsureRequestedCostCenterIsAllowedAsync(query.CostCenterId, cancellationToken);
         var scopedQuery = await BuildScopedQueryAsync();
         IQueryable<ReimbursementRequest> dbQuery = scopedQuery
             .Include(x => x.Category)
@@ -456,6 +457,19 @@ public sealed class ReimbursementService : IReimbursementService
     {
         var userId = RequireCurrentUserId();
         return await _dbContext.ManagerCostCenterScopes.AnyAsync(x => x.ManagerId == userId && x.CostCenterId == costCenterId, cancellationToken);
+    }
+
+    private async Task EnsureRequestedCostCenterIsAllowedAsync(Guid? costCenterId, CancellationToken cancellationToken)
+    {
+        if (!costCenterId.HasValue || _currentUserContext.Role != UserRole.Manager)
+        {
+            return;
+        }
+
+        if (!await IsManagerScopedAsync(costCenterId.Value, cancellationToken))
+        {
+            throw new ForbiddenAppException("O gestor não possui escopo para o centro de custo informado.");
+        }
     }
 
     private async Task<IQueryable<ReimbursementRequest>> BuildScopedQueryAsync()

@@ -16,6 +16,8 @@ namespace Reembolso.SecurityTests;
 
 public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    public Guid CostCenterId { get; private set; }
+    public Guid SecondaryCostCenterId { get; private set; }
     public Guid CategoryId { get; private set; }
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
@@ -94,6 +96,8 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         var costCenter = new CostCenter("FIN-001", "Financeiro", now);
         var secondaryCostCenter = new CostCenter("TEC-002", "Tecnologia", now);
         var category = new ReimbursementCategory("Transporte", "Despesas com deslocamento", 500, 100, now);
+        CostCenterId = costCenter.Id;
+        SecondaryCostCenterId = secondaryCostCenter.Id;
         CategoryId = category.Id;
 
         var collaborator = new User("Alice Colaboradora", "alice@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now);
