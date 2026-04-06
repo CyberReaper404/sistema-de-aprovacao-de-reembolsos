@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Reembolso.Application.Abstractions;
 using Reembolso.Infrastructure.Auditing;
 using Reembolso.Infrastructure.Options;
@@ -22,6 +23,7 @@ public static class ServiceCollectionExtensions
                 options.DefaultConnection = currentConfiguration.GetConnectionString("DefaultConnection") ?? string.Empty;
             })
             .Validate(options => !string.IsNullOrWhiteSpace(options.DefaultConnection), "A conexão com o banco não foi configurada. Defina ConnectionStrings__DefaultConnection fora do repositório.")
+            .Validate(options => IsValidConnectionString(options.DefaultConnection), "A conexão com o banco está em formato inválido.")
             .ValidateOnStart();
 
         services
@@ -66,5 +68,18 @@ public static class ServiceCollectionExtensions
         return rootPath
             .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(segment => segment.Equals("wwwroot", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsValidConnectionString(string connectionString)
+    {
+        try
+        {
+            _ = new NpgsqlConnectionStringBuilder(connectionString);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 }

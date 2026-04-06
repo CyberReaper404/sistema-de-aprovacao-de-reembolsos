@@ -24,6 +24,9 @@ uploads/
 
 # Dotnet local cache
 .dotnet/
+backend/.nuget/
+backend/build-*.log
+backend/build-diag.log
 
 # Test output
 TestResults/

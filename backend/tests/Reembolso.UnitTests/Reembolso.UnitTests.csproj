@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Reembolso.Application\Reembolso.Application.csproj" />
     <ProjectReference Include="..\..\src\Reembolso.Domain\Reembolso.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Reembolso.Infrastructure\Reembolso.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
