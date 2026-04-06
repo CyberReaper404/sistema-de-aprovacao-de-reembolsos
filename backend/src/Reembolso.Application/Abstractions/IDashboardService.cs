@@ -9,5 +9,6 @@ public interface IDashboardService
     Task<IReadOnlyCollection<DashboardByCategoryItemResponse>> GetByCategoryAsync(DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<DashboardByStatusItemResponse>> GetByStatusAsync(DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
-}
 
+    Task<IReadOnlyCollection<DashboardByPeriodItemResponse>> GetByPeriodAsync(DashboardByPeriodQuery query, CancellationToken cancellationToken);
+}

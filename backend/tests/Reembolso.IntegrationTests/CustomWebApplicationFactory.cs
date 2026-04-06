@@ -1,6 +1,4 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -8,7 +6,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Reembolso.Application.Dtos.Auth;
+using Microsoft.Extensions.Logging;
+using Reembolso.Application.Abstractions;
 using Reembolso.Domain.Entities;
 using Reembolso.Domain.Enums;
 using Reembolso.Infrastructure.Persistence;
@@ -27,6 +26,7 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
             services.RemoveAll(typeof(DbContextOptions<AppDbContext>));
@@ -75,25 +75,13 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
             HandleCookies = true
         });
 
-        var response = client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password)).GetAwaiter().GetResult();
-        response.EnsureSuccessStatusCode();
-        var payload = response.Content.ReadFromJsonAsync<LoginResponse>().GetAwaiter().GetResult()
-            ?? throw new InvalidOperationException("Resposta de login inválida.");
+        using var scope = Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
+        var user = dbContext.Users.SingleOrDefault(x => x.Email == email)
+            ?? throw new InvalidOperationException($"Usuário de teste não encontrado: {email}");
 
-        if (string.IsNullOrWhiteSpace(payload.AccessToken))
-        {
-            var body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            throw new InvalidOperationException($"Login sem access token: {body}");
-        }
-
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", payload.AccessToken);
-        var meResponse = client.GetAsync("/api/auth/me").GetAwaiter().GetResult();
-        if (!meResponse.IsSuccessStatusCode)
-        {
-            var body = meResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            var authHeader = string.Join(" | ", meResponse.Headers.WwwAuthenticate.Select(x => x.ToString()));
-            throw new InvalidOperationException($"Falha ao validar sessão de teste: {(int)meResponse.StatusCode} - auth={authHeader} - token={payload.AccessToken} - body={body}");
-        }
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenService.CreateAccessToken(user));
 
         return client;
     }
@@ -133,6 +121,4 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         _environmentVariables[variableName] = value;
         Environment.SetEnvironmentVariable(variableName, value);
     }
-
-    private sealed record LoginResponse([property: JsonPropertyName("accessToken")] string AccessToken);
 }

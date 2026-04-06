@@ -54,6 +54,33 @@ public sealed class DashboardService : IDashboardService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<DashboardByPeriodItemResponse>> GetByPeriodAsync(DashboardByPeriodQuery query, CancellationToken cancellationToken)
+    {
+        var scopedQuery = ApplyPeriod(await BuildScopedQueryAsync(), query.From, query.To);
+        var items = await scopedQuery
+            .Select(x => new
+            {
+                x.ExpenseDate,
+                x.Status,
+                x.Amount
+            })
+            .ToListAsync(cancellationToken);
+
+        return items
+            .GroupBy(x => query.GroupBy == DashboardPeriodGrouping.Day
+                ? x.ExpenseDate
+                : new DateOnly(x.ExpenseDate.Year, x.ExpenseDate.Month, 1))
+            .Select(group => new DashboardByPeriodItemResponse(
+                group.Key,
+                query.GroupBy,
+                group.Count(),
+                group.Sum(x => x.Amount),
+                group.Count(x => x.Status == RequestStatus.Paid),
+                group.Where(x => x.Status == RequestStatus.Paid).Sum(x => x.Amount)))
+            .OrderBy(x => x.PeriodStart)
+            .ToArray();
+    }
+
     private Task<IQueryable<ReimbursementRequest>> BuildScopedQueryAsync()
     {
         var role = _currentUserContext.Role ?? throw new ForbiddenAppException("Acesso negado ao dashboard.");
@@ -84,4 +111,3 @@ public sealed class DashboardService : IDashboardService
         return query;
     }
 }
-

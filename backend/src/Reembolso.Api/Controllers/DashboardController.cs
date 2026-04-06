@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Reembolso.Application.Abstractions;
+using Reembolso.Application.Dtos.Dashboard;
 
 namespace Reembolso.Api.Controllers;
 
@@ -33,5 +34,14 @@ public sealed class DashboardController : ControllerBase
     {
         return Ok(await _dashboardService.GetByStatusAsync(from, to, cancellationToken));
     }
-}
 
+    [HttpGet("by-period")]
+    public async Task<IActionResult> ByPeriod(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromQuery] DashboardPeriodGrouping groupBy = DashboardPeriodGrouping.Month,
+        CancellationToken cancellationToken = default)
+    {
+        return Ok(await _dashboardService.GetByPeriodAsync(new DashboardByPeriodQuery(from, to, groupBy), cancellationToken));
+    }
+}

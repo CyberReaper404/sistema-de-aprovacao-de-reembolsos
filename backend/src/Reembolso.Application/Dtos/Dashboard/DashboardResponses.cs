@@ -21,3 +21,10 @@ public sealed record DashboardByStatusItemResponse(
     int TotalRequests,
     decimal TotalAmount);
 
+public sealed record DashboardByPeriodItemResponse(
+    DateOnly PeriodStart,
+    DashboardPeriodGrouping GroupBy,
+    int TotalRequests,
+    decimal TotalAmount,
+    int PaidRequests,
+    decimal PaidAmount);
