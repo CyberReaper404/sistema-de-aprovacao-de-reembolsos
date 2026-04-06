@@ -17,6 +17,7 @@ namespace Reembolso.IntegrationTests;
 public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public Guid CostCenterId { get; private set; }
+    public Guid SecondaryCostCenterId { get; private set; }
     public Guid CategoryId { get; private set; }
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
@@ -98,21 +99,26 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         var now = DateTimeOffset.UtcNow;
 
         var costCenter = new CostCenter("FIN-001", "Financeiro", now);
+        var secondaryCostCenter = new CostCenter("TEC-002", "Tecnologia", now);
         var category = new ReimbursementCategory("Transporte", "Despesas com deslocamento", 500, 100, now);
 
         CostCenterId = costCenter.Id;
+        SecondaryCostCenterId = secondaryCostCenter.Id;
         CategoryId = category.Id;
 
         var collaborator = new User("Alice Colaboradora", "alice@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now);
         var secondCollaborator = new User("Carlos Colaborador", "carlos@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now);
+        var externalCollaborator = new User("Débora Colaboradora", "debora@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, secondaryCostCenter.Id, now);
         var manager = new User("Bruno Gestor", "bruno@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Manager, costCenter.Id, now);
+        var externalManager = new User("Gustavo Gestor", "gustavo@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Manager, secondaryCostCenter.Id, now);
         var finance = new User("Fernanda Financeiro", "fernanda@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Finance, costCenter.Id, now);
         var admin = new User("Ana Admin", "admin@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Administrator, costCenter.Id, now);
 
-        dbContext.CostCenters.Add(costCenter);
+        dbContext.CostCenters.AddRange(costCenter, secondaryCostCenter);
         dbContext.ReimbursementCategories.Add(category);
-        dbContext.Users.AddRange(collaborator, secondCollaborator, manager, finance, admin);
+        dbContext.Users.AddRange(collaborator, secondCollaborator, externalCollaborator, manager, externalManager, finance, admin);
         dbContext.ManagerCostCenterScopes.Add(new ManagerCostCenterScope(manager.Id, costCenter.Id, now));
+        dbContext.ManagerCostCenterScopes.Add(new ManagerCostCenterScope(externalManager.Id, secondaryCostCenter.Id, now));
         await dbContext.SaveChangesAsync();
     }
 

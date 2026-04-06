@@ -20,7 +20,7 @@ public sealed class AdministrativeConsistencyTests : IClassFixture<CustomWebAppl
     {
         using var adminClient = _factory.CreateAuthenticatedClient("admin@empresa.test", "Senha@123");
 
-        var createCostCenterResponse = await adminClient.PostAsJsonAsync("/api/admin/cost-centers", new CreateCostCenterRequest("TEC-002", "Tecnologia"));
+        var createCostCenterResponse = await adminClient.PostAsJsonAsync("/api/admin/cost-centers", new CreateCostCenterRequest("JUR-004", "Jurídico"));
         createCostCenterResponse.EnsureSuccessStatusCode();
         var costCenter = await createCostCenterResponse.Content.ReadFromJsonAsync<CostCenterResponse>();
         Assert.NotNull(costCenter);

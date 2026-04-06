@@ -84,7 +84,7 @@ public sealed class ReimbursementService : IReimbursementService
         ValidateCategoryPolicy(await GetActiveCategoryAsync(request.CategoryId, cancellationToken), request.Amount);
 
         var now = _dateTimeProvider.UtcNow;
-        entity.UpdateDraft(request.Title, request.CategoryId, request.Amount, request.Currency, request.ExpenseDate, request.Description, now);
+        ExecuteDomainTransition(() => entity.UpdateDraft(request.Title, request.CategoryId, request.Amount, request.Currency, request.ExpenseDate, request.Description, now));
         _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.DraftUpdated, RequestStatus.Draft, RequestStatus.Draft, RequireCurrentUserId(), null, now));
 
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
@@ -150,15 +150,11 @@ public sealed class ReimbursementService : IReimbursementService
             dbQuery = dbQuery.Where(x => x.CreatedByUserId == _currentUserContext.UserId.Value);
         }
 
-        dbQuery = ApplyOrdering(dbQuery, query.Sort);
-
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
         var totalItems = await dbQuery.CountAsync(cancellationToken);
 
-        var items = await dbQuery
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+        var projectedItems = await dbQuery
             .Select(x => new ReimbursementListItemResponse(
                 x.Id,
                 x.RequestNumber,
@@ -172,6 +168,11 @@ public sealed class ReimbursementService : IReimbursementService
                 x.CreatedAt))
             .ToListAsync(cancellationToken);
 
+        var items = ApplyOrdering(projectedItems, query.Sort)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToArray();
+
         return new PagedResult<ReimbursementListItemResponse>(items, page, pageSize, totalItems, (int)Math.Ceiling(totalItems / (double)pageSize));
     }
 
@@ -182,7 +183,7 @@ public sealed class ReimbursementService : IReimbursementService
         EnsureAttachmentPolicy(entity);
 
         var now = _dateTimeProvider.UtcNow;
-        entity.Submit(now);
+        ExecuteDomainTransition(() => entity.Submit(now));
         _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Submitted, RequestStatus.Draft, RequestStatus.Submitted, RequireCurrentUserId(), null, now));
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
     }
@@ -194,7 +195,7 @@ public sealed class ReimbursementService : IReimbursementService
 
         var now = _dateTimeProvider.UtcNow;
         var userId = RequireCurrentUserId();
-        entity.Approve(userId, now);
+        ExecuteDomainTransition(() => entity.Approve(userId, now));
         _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Approved, RequestStatus.Submitted, RequestStatus.Approved, userId, request.Comment, now));
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
         await _auditService.WriteAsync("reimbursement.approved", "reimbursement_request", entity.Id.ToString(), AuditSeverity.Information, null, cancellationToken);
@@ -215,7 +216,7 @@ public sealed class ReimbursementService : IReimbursementService
 
         var now = _dateTimeProvider.UtcNow;
         var userId = RequireCurrentUserId();
-        entity.Reject(userId, request.Reason, now);
+        ExecuteDomainTransition(() => entity.Reject(userId, request.Reason, now));
         _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Rejected, RequestStatus.Submitted, RequestStatus.Rejected, userId, request.Reason, now));
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
         await _auditService.WriteAsync("reimbursement.rejected", "reimbursement_request", entity.Id.ToString(), AuditSeverity.Warning, null, cancellationToken);
@@ -241,7 +242,7 @@ public sealed class ReimbursementService : IReimbursementService
 
         var now = _dateTimeProvider.UtcNow;
         var userId = RequireCurrentUserId();
-        entity.RegisterPayment(userId, request.PaidAt, now);
+        ExecuteDomainTransition(() => entity.RegisterPayment(userId, request.PaidAt, now));
 
         _dbContext.PaymentRecords.Add(new PaymentRecord(entity.Id, userId, request.PaidAt, request.PaymentMethod, request.PaymentReference, request.AmountPaid, request.Notes, now));
         _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.PaymentRegistered, RequestStatus.Approved, RequestStatus.Paid, userId, request.PaymentReference, now));
@@ -593,7 +594,7 @@ public sealed class ReimbursementService : IReimbursementService
         return $"RMB-{now:yyyyMMdd}-{RandomNumberGenerator.GetHexString(3)}";
     }
 
-    private IQueryable<ReimbursementRequest> ApplyOrdering(IQueryable<ReimbursementRequest> query, string sort)
+    private static IEnumerable<ReimbursementListItemResponse> ApplyOrdering(IEnumerable<ReimbursementListItemResponse> query, string sort)
     {
         var parts = sort.Split(':', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var field = parts.ElementAtOrDefault(0)?.ToLowerInvariant() ?? "createdat";
@@ -611,6 +612,18 @@ public sealed class ReimbursementService : IReimbursementService
 
     private ValidationAppException Validation(string message, IReadOnlyDictionary<string, string[]> errors)
         => new(message, errors);
+
+    private static void ExecuteDomainTransition(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (DomainRuleException exception)
+        {
+            throw new ConflictAppException(exception.Message, "invalid_workflow_transition");
+        }
+    }
 
     private async Task SaveChangesHandlingConcurrencyAsync(CancellationToken cancellationToken)
     {

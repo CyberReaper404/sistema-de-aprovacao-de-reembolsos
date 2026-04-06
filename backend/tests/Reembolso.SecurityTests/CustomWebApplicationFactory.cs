@@ -92,14 +92,24 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         var now = DateTimeOffset.UtcNow;
 
         var costCenter = new CostCenter("FIN-001", "Financeiro", now);
+        var secondaryCostCenter = new CostCenter("TEC-002", "Tecnologia", now);
         var category = new ReimbursementCategory("Transporte", "Despesas com deslocamento", 500, 100, now);
         CategoryId = category.Id;
 
-        dbContext.CostCenters.Add(costCenter);
+        var collaborator = new User("Alice Colaboradora", "alice@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now);
+        var secondCollaborator = new User("Carlos Colaborador", "carlos@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now);
+        var externalCollaborator = new User("Débora Colaboradora", "debora@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, secondaryCostCenter.Id, now);
+        var manager = new User("Bruno Gestor", "bruno@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Manager, costCenter.Id, now);
+        var externalManager = new User("Gustavo Gestor", "gustavo@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Manager, secondaryCostCenter.Id, now);
+        var finance = new User("Fernanda Financeiro", "fernanda@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Finance, costCenter.Id, now);
+
+        dbContext.CostCenters.AddRange(costCenter, secondaryCostCenter);
         dbContext.ReimbursementCategories.Add(category);
-        dbContext.Users.AddRange(
-            new User("Alice Colaboradora", "alice@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now),
-            new User("Carlos Colaborador", "carlos@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now));
+        dbContext.Users.AddRange(collaborator, secondCollaborator, externalCollaborator, manager, externalManager, finance);
+
+        dbContext.ManagerCostCenterScopes.AddRange(
+            new ManagerCostCenterScope(manager.Id, costCenter.Id, now),
+            new ManagerCostCenterScope(externalManager.Id, secondaryCostCenter.Id, now));
 
         await dbContext.SaveChangesAsync();
     }
