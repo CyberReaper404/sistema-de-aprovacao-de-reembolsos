@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Reembolso.Application.Dtos.Auth;
@@ -21,23 +20,12 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     public Guid CategoryId { get; private set; }
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
+    private readonly Dictionary<string, string?> _environmentVariables = new();
+    private string _attachmentRootPath = string.Empty;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
-        builder.ConfigureAppConfiguration((_, configBuilder) =>
-        {
-            configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:DefaultConnection"] = "Data Source=ignored",
-                ["Jwt:Issuer"] = "reembolso-corporativo",
-                ["Jwt:Audience"] = "reembolso-corporativo-web",
-                ["Jwt:SigningKey"] = "trocar-esta-chave-em-producao-com-no-minimo-32-caracteres",
-                ["AttachmentStorage:RootPath"] = Path.Combine(Path.GetTempPath(), "reembolso-security-tests", Guid.NewGuid().ToString("N")),
-                ["AttachmentStorage:MaxFileSizeInBytes"] = "10485760"
-            });
-        });
-
         builder.ConfigureServices(services =>
         {
             services.RemoveAll(typeof(DbContextOptions<AppDbContext>));
@@ -47,6 +35,14 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
     public async Task InitializeAsync()
     {
+        _attachmentRootPath = Path.Combine(Path.GetTempPath(), "reembolso-security-tests", Guid.NewGuid().ToString("N"));
+        SetEnvironmentVariable("ConnectionStrings__DefaultConnection", "Host=example.invalid;Database=ignored;Username=ignored;Password=ignored");
+        SetEnvironmentVariable("Jwt__Issuer", "reembolso-corporativo");
+        SetEnvironmentVariable("Jwt__Audience", "reembolso-corporativo-web");
+        SetEnvironmentVariable("Jwt__SigningKey", "chave-de-teste-com-mais-de-trinta-e-dois-caracteres");
+        SetEnvironmentVariable("AttachmentStorage__RootPath", _attachmentRootPath);
+        SetEnvironmentVariable("AttachmentStorage__MaxFileSizeInBytes", "10485760");
+
         await _connection.OpenAsync();
 
         using var scope = Services.CreateScope();
@@ -58,6 +54,16 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
     public new async Task DisposeAsync()
     {
         await _connection.DisposeAsync();
+
+        foreach (var variableName in _environmentVariables.Keys)
+        {
+            Environment.SetEnvironmentVariable(variableName, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_attachmentRootPath) && Directory.Exists(_attachmentRootPath))
+        {
+            Directory.Delete(_attachmentRootPath, true);
+        }
     }
 
     public HttpClient CreateAuthenticatedClient(string email, string password)
@@ -66,7 +72,7 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         var response = client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password)).GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
         var payload = response.Content.ReadFromJsonAsync<LoginResponse>().GetAwaiter().GetResult()
-            ?? throw new InvalidOperationException("Resposta de login invalida.");
+            ?? throw new InvalidOperationException("Resposta de login inválida.");
 
         if (string.IsNullOrWhiteSpace(payload.AccessToken))
         {
@@ -80,7 +86,7 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
         {
             var body = meResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             var authHeader = string.Join(" | ", meResponse.Headers.WwwAuthenticate.Select(x => x.ToString()));
-            throw new InvalidOperationException($"Falha ao validar sessao de teste: {(int)meResponse.StatusCode} - auth={authHeader} - token={payload.AccessToken} - body={body}");
+            throw new InvalidOperationException($"Falha ao validar sessão de teste: {(int)meResponse.StatusCode} - auth={authHeader} - token={payload.AccessToken} - body={body}");
         }
 
         return client;
@@ -108,6 +114,12 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
             new User("Carlos Colaborador", "carlos@empresa.test", hasher.HashPassword(marker, "Senha@123"), UserRole.Collaborator, costCenter.Id, now));
 
         await dbContext.SaveChangesAsync();
+    }
+
+    private void SetEnvironmentVariable(string variableName, string value)
+    {
+        _environmentVariables[variableName] = value;
+        Environment.SetEnvironmentVariable(variableName, value);
     }
 
     private sealed record LoginResponse([property: JsonPropertyName("accessToken")] string AccessToken);

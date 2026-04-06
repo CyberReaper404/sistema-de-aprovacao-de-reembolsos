@@ -13,11 +13,14 @@ node_modules/
 
 # Environment
 .env
+.env.*
 .env.local
-.env.*.local
 
 # Storage
 backend/storage/
+backend/storage/**
+uploads/
+**/uploads/
 
 # Dotnet local cache
 .dotnet/
@@ -25,4 +28,26 @@ backend/storage/
 # Test output
 TestResults/
 coverage/
+*.trx
 
+# Configurações locais
+appsettings.Local.json
+appsettings.*.local.json
+backend/src/Reembolso.Api/appsettings.Production.json
+
+# Backups e dumps
+*.bak
+*.backup
+*.dump
+*.sql
+*.sql.gz
+
+# Certificados e chaves
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+*.cer
+*.jks
+*.snk

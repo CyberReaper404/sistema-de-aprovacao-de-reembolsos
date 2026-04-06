@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Reembolso.Application.Abstractions;
 using Reembolso.Infrastructure.Auditing;
 using Reembolso.Infrastructure.Options;
@@ -17,6 +16,15 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services
+            .AddOptions<DatabaseConnectionOptions>()
+            .Configure<IConfiguration>((options, currentConfiguration) =>
+            {
+                options.DefaultConnection = currentConfiguration.GetConnectionString("DefaultConnection") ?? string.Empty;
+            })
+            .Validate(options => !string.IsNullOrWhiteSpace(options.DefaultConnection), "A conexão com o banco não foi configurada. Defina ConnectionStrings__DefaultConnection fora do repositório.")
+            .ValidateOnStart();
+
+        services
             .AddOptions<JwtOptions>()
             .Bind(configuration.GetSection(JwtOptions.SectionName))
             .Validate(options =>
@@ -30,6 +38,8 @@ public static class ServiceCollectionExtensions
         services
             .AddOptions<AttachmentStorageOptions>()
             .Bind(configuration.GetSection(AttachmentStorageOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.RootPath), "O caminho de armazenamento de anexos é obrigatório.")
+            .Validate(options => !ContainsWwwrootSegment(options.RootPath), "O armazenamento de anexos não pode apontar para wwwroot.")
             .Validate(options => options.MaxFileSizeInBytes > 0, "O tamanho máximo de anexo deve ser maior que zero.")
             .ValidateOnStart();
 
@@ -49,5 +59,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAdminService, AdminService>();
 
         return services;
+    }
+
+    private static bool ContainsWwwrootSegment(string rootPath)
+    {
+        return rootPath
+            .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(segment => segment.Equals("wwwroot", StringComparison.OrdinalIgnoreCase));
     }
 }
