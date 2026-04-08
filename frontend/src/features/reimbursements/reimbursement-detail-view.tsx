@@ -227,6 +227,11 @@ export function ReimbursementDetailView() {
             <StatusBadge tone={getStatusTone(detail.status)}>
               {requestStatusLabels[detail.status]}
             </StatusBadge>
+            {detail.allowedActions.canEditDraft ? (
+              <Link className="ui-button ui-button--secondary" to={`/solicitacoes/${detail.id}/editar`}>
+                Editar rascunho
+              </Link>
+            ) : null}
             <Link className="ui-button ui-button--secondary" to="/solicitacoes">
               Voltar para a listagem
             </Link>

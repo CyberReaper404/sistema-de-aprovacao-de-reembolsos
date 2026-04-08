@@ -14,6 +14,14 @@ export interface ReimbursementListItem {
   createdAt: string;
 }
 
+export interface ReimbursementCategoryOption {
+  id: string;
+  name: string;
+  description?: string | null;
+  maxAmount?: number | null;
+  receiptRequiredAboveAmount?: number | null;
+}
+
 export interface ReimbursementAllowedActions {
   canEditDraft: boolean;
   canSubmit: boolean;
@@ -88,3 +96,16 @@ export interface ReimbursementListQuery {
 }
 
 export type ReimbursementListResponse = PagedResult<ReimbursementListItem>;
+
+export interface CreateReimbursementPayload {
+  title: string;
+  categoryId: string;
+  amount: number;
+  currency: string;
+  expenseDate: string;
+  description: string;
+}
+
+export interface UpdateReimbursementDraftPayload extends CreateReimbursementPayload {
+  rowVersion: string;
+}

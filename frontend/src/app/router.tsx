@@ -46,6 +46,10 @@ export const router = createBrowserRouter([
             element: <ReimbursementDraftPage />
           },
           {
+            path: "/solicitacoes/:id/editar",
+            element: <ReimbursementDraftPage />
+          },
+          {
             path: "/solicitacoes/:id",
             element: <ReimbursementDetailPage />
           },

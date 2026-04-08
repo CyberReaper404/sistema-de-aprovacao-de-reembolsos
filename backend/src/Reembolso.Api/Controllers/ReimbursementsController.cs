@@ -19,6 +19,12 @@ public sealed class ReimbursementsController : ControllerBase
         _service = service;
     }
 
+    [HttpGet("categories")]
+    public async Task<IActionResult> GetAvailableCategories(CancellationToken cancellationToken)
+    {
+        return Ok(await _service.GetAvailableCategoriesAsync(cancellationToken));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetPaged(
         [FromQuery] int page = 1,
@@ -124,4 +130,3 @@ public sealed class ReimbursementsController : ControllerBase
         return Ok(await _service.GetWorkflowActionsAsync(id, cancellationToken));
     }
 }
-

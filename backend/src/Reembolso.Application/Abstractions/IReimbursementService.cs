@@ -5,6 +5,8 @@ namespace Reembolso.Application.Abstractions;
 
 public interface IReimbursementService
 {
+    Task<IReadOnlyCollection<ReimbursementCategoryOptionResponse>> GetAvailableCategoriesAsync(CancellationToken cancellationToken);
+
     Task<ReimbursementDetailResponse> CreateAsync(CreateReimbursementRequest request, CancellationToken cancellationToken);
 
     Task<ReimbursementDetailResponse> UpdateDraftAsync(Guid requestId, UpdateReimbursementDraftRequest request, CancellationToken cancellationToken);
@@ -37,4 +39,3 @@ public interface IReimbursementService
 
     Task<IReadOnlyCollection<WorkflowActionResponse>> GetWorkflowActionsAsync(Guid requestId, CancellationToken cancellationToken);
 }
-

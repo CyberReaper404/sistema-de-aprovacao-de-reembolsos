@@ -14,6 +14,13 @@ public sealed record ReimbursementListItemResponse(
     string CostCenterCode,
     DateTimeOffset CreatedAt);
 
+public sealed record ReimbursementCategoryOptionResponse(
+    Guid Id,
+    string Name,
+    string? Description,
+    decimal? MaxAmount,
+    decimal? ReceiptRequiredAboveAmount);
+
 public sealed record ReimbursementDetailResponse(
     Guid Id,
     string RequestNumber,
@@ -67,4 +74,3 @@ public sealed record WorkflowActionResponse(
     Guid PerformedByUserId,
     string? Comment,
     DateTimeOffset OccurredAt);
-

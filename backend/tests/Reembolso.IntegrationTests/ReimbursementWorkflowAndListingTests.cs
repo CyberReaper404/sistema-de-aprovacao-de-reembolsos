@@ -1,9 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Reembolso.Application.Common;
 using Reembolso.Application.Dtos.Reimbursements;
+using Reembolso.Domain.Entities;
 using Reembolso.Domain.Enums;
+using Reembolso.Infrastructure.Persistence;
 
 namespace Reembolso.IntegrationTests;
 
@@ -155,6 +159,39 @@ public sealed class ReimbursementWorkflowAndListingTests : IClassFixture<CustomW
         var response = await collaboratorClient.PostAsync($"/api/reimbursements/{created.Id}/attachments", form);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Colaborador_DeveListarApenasCategoriasAtivas()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            dbContext.ReimbursementCategories.Add(
+                new ReimbursementCategory("Categoria inativa", "Não deve aparecer na listagem pública", 100, 50, DateTimeOffset.UtcNow));
+            await dbContext.SaveChangesAsync();
+
+            var inactiveCategory = await dbContext.ReimbursementCategories.SingleAsync(x => x.Name == "Categoria inativa");
+            inactiveCategory.Update(
+                inactiveCategory.Name,
+                inactiveCategory.Description,
+                inactiveCategory.MaxAmount,
+                inactiveCategory.ReceiptRequiredAboveAmount,
+                false,
+                DateTimeOffset.UtcNow);
+            await dbContext.SaveChangesAsync();
+        }
+
+        using var collaboratorClient = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
+
+        var response = await collaboratorClient.GetAsync("/api/reimbursements/categories");
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<List<ReimbursementCategoryOptionResponse>>();
+
+        Assert.NotNull(payload);
+        Assert.Contains(payload!, x => x.Id == _factory.CategoryId);
+        Assert.DoesNotContain(payload!, x => x.Name == "Categoria inativa");
     }
 
     private async Task<ReimbursementDetailDto> CriarSolicitacaoAsync(HttpClient client, string title, decimal amount, DateOnly expenseDate, string description)

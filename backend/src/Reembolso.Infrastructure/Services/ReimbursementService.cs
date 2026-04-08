@@ -74,6 +74,21 @@ public sealed class ReimbursementService : IReimbursementService
         return await GetByIdAsync(entity.Id, cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<ReimbursementCategoryOptionResponse>> GetAvailableCategoriesAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.ReimbursementCategories
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Name)
+            .Select(x => new ReimbursementCategoryOptionResponse(
+                x.Id,
+                x.Name,
+                x.Description,
+                x.MaxAmount,
+                x.ReceiptRequiredAboveAmount))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<ReimbursementDetailResponse> UpdateDraftAsync(Guid requestId, UpdateReimbursementDraftRequest request, CancellationToken cancellationToken)
     {
         var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
