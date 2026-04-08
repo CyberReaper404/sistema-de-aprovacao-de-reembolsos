@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { PageSection } from "@/components/layout/PageSection";
+import loginVisual from "@/assets/login-visual.jpg";
 import { useSession } from "@/features/auth/session-context";
 import { ApiError } from "@/services/http/api-error";
 
@@ -40,19 +40,22 @@ export function LoginPage() {
   };
 
   return (
-    <div className="auth-page">
-      <section className="auth-page__panel auth-page__panel--form">
-        <div className="auth-page__brand">
-          <strong>NIO</strong>
-          <span>Ticket</span>
+    <div className="login-screen">
+      <section className="login-screen__form-side">
+        <div className="login-screen__brand">
+          <span>
+            <strong>NIO</strong> Ticket
+          </span>
         </div>
 
-        <PageSection
-          title="Bem-vindo de volta"
-          description="Entre com seu e-mail corporativo e sua senha para acessar o fluxo de reembolsos."
-        >
-          <form className="auth-form" onSubmit={handleSubmit}>
-            {errorMessage ? <div className="auth-form__error">{errorMessage}</div> : null}
+        <div className="login-screen__form-block">
+          <div className="login-screen__heading">
+            <h1>Bem-vindo de volta</h1>
+            <p>Centralize solicitações, aprovações e pagamentos em um fluxo claro e seguro.</p>
+          </div>
+
+          <form className="login-form" onSubmit={handleSubmit}>
+            {errorMessage ? <div className="login-form__error">{errorMessage}</div> : null}
 
             <label>
               <span>E-mail</span>
@@ -66,6 +69,7 @@ export function LoginPage() {
                 required
               />
             </label>
+
             <label>
               <span>Senha</span>
               <input
@@ -78,19 +82,24 @@ export function LoginPage() {
                 required
               />
             </label>
+
             <button type="submit" disabled={isBlocked}>
-              {isSubmitting ? "Entrando..." : "Entrar"}
+              {isSubmitting ? "Entrando..." : "Entrar com e-mail"}
             </button>
           </form>
-        </PageSection>
+
+          <p className="login-screen__note">Acesso restrito a usuários cadastrados no sistema.</p>
+        </div>
+
+        <div className="login-screen__footer">
+          <a href="/">Ajuda</a>
+          <a href="/">Termos</a>
+          <a href="/">Privacidade</a>
+        </div>
       </section>
 
-      <section className="auth-page__panel auth-page__panel--visual" aria-hidden="true">
-        <div className="auth-page__visual-copy">
-          <span>Fluxo corporativo</span>
-          <h2>Controle solicitações, aprovações e pagamentos em um só lugar.</h2>
-          <p>A identidade visual final do login entra na rodada de layout, mantendo a direção já aprovada para a marca.</p>
-        </div>
+      <section className="login-screen__visual-side" aria-hidden="true">
+        <img src={loginVisual} alt="" />
       </section>
     </div>
   );

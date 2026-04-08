@@ -38,9 +38,14 @@ export function AppLayout() {
   return (
     <div className="app-shell">
       <aside className="app-shell__sidebar">
-        <div className="app-shell__brand">
-          <strong>NIO</strong>
-          <span>Ticket</span>
+        <div className="app-shell__brand-block">
+          <div className="app-shell__brand-mark">
+            <strong>NIO</strong>
+          </div>
+          <div className="app-shell__brand-copy">
+            <span>NIO Ticket</span>
+            <small>Fluxo interno de reembolsos</small>
+          </div>
         </div>
 
         <nav className="app-shell__nav" aria-label="Navegação principal">
@@ -53,29 +58,35 @@ export function AppLayout() {
                 isActive ? "app-shell__nav-link app-shell__nav-link--active" : "app-shell__nav-link"
               }
             >
-              {item.label}
+              <span className="app-shell__nav-dot" aria-hidden="true" />
+              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
 
-        <footer className="app-shell__footer">
-          <span>{session.user.fullName}</span>
-          <small>
-            {userRoleLabels[session.user.role]} · {session.user.email}
-          </small>
-        </footer>
-      </aside>
+        <div className="app-shell__support">
+          <span>Ambiente seguro</span>
+          <p>O acesso e as ações seguem o papel do usuário autenticado.</p>
+        </div>
 
-      <div className="app-shell__main">
-        <header className="app-shell__header">
-          <div>
-            <p className="app-shell__eyebrow">Sessão autenticada</p>
-            <h1>NIO Ticket</h1>
+        <footer className="app-shell__footer">
+          <div className="app-shell__user">
+            <div className="app-shell__avatar">{session.user.fullName.slice(0, 1)}</div>
+            <div>
+              <span>{session.user.fullName}</span>
+              <small>{userRoleLabels[session.user.role]}</small>
+            </div>
           </div>
           <button className="app-shell__logout-button" type="button" onClick={handleLogout} disabled={isSigningOut}>
             {isSigningOut ? "Saindo..." : "Sair"}
           </button>
-        </header>
+        </footer>
+      </aside>
+
+      <div className="app-shell__main">
+        <div className="app-shell__topbar">
+          <p className="app-shell__topbar-copy">Painel operacional</p>
+        </div>
         <main className="app-shell__content">
           <Outlet />
         </main>
