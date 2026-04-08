@@ -25,4 +25,8 @@ export class ReimbursementService {
   public getWorkflowActions(id: string) {
     return this.httpClient.get<WorkflowAction[]>(`/reimbursements/${id}/workflow-actions`);
   }
+
+  public downloadAttachment(id: string, attachmentId: string) {
+    return this.httpClient.download(`/reimbursements/${id}/attachments/${attachmentId}`);
+  }
 }

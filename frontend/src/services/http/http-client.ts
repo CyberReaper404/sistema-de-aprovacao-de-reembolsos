@@ -1,5 +1,5 @@
 import { ApiError } from "@/services/http/api-error";
-import type { ProblemDetails } from "@/types/common";
+import type { DownloadedFile, ProblemDetails } from "@/types/common";
 
 export interface HttpClientOptions {
   baseUrl?: string;
@@ -43,6 +43,10 @@ export class HttpClient {
 
   public delete<TResponse>(path: string) {
     return this.request<TResponse>(path, { method: "DELETE" });
+  }
+
+  public download(path: string) {
+    return this.requestFile(path, { method: "GET" });
   }
 
   private async request<TResponse>(
@@ -95,6 +99,52 @@ export class HttpClient {
     }
 
     return (await response.json()) as TResponse;
+  }
+
+  private async requestFile(
+    path: string,
+    init: {
+      method: string;
+    },
+    allowRetry = true
+  ): Promise<DownloadedFile> {
+    const url = this.buildUrl(path);
+    const headers = new Headers();
+    const accessToken = this.getAccessToken();
+
+    if (accessToken) {
+      headers.set("Authorization", `Bearer ${accessToken}`);
+    }
+
+    const response = await fetch(url, {
+      method: init.method,
+      headers,
+      credentials: "include"
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 && allowRetry && this.onUnauthorized && this.shouldRetryUnauthorized(path)) {
+        const recovered = await this.onUnauthorized();
+
+        if (recovered) {
+          return this.requestFile(path, init, false);
+        }
+      }
+
+      throw await this.toApiError(response);
+    }
+
+    const content = await response.blob();
+    const contentDisposition = response.headers.get("Content-Disposition");
+    const encodedFileName = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plainFileName = contentDisposition?.match(/filename="?([^"]+)"?/i)?.[1];
+    const fileName = encodedFileName ? decodeURIComponent(encodedFileName) : plainFileName;
+
+    return {
+      content,
+      fileName,
+      contentType: response.headers.get("Content-Type") ?? content.type ?? "application/octet-stream"
+    };
   }
 
   private buildUrl(path: string, query?: QueryObject) {

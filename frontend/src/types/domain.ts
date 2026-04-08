@@ -49,3 +49,14 @@ export const requestStatusLabels: Record<RequestStatus, string> = {
   [RequestStatus.Rejected]: "Recusada",
   [RequestStatus.Paid]: "Paga"
 };
+
+export const workflowActionTypeLabels: Record<WorkflowActionType, string> = {
+  [WorkflowActionType.DraftCreated]: "Rascunho criado",
+  [WorkflowActionType.DraftUpdated]: "Rascunho atualizado",
+  [WorkflowActionType.Submitted]: "Solicitação enviada",
+  [WorkflowActionType.Approved]: "Solicitação aprovada",
+  [WorkflowActionType.Rejected]: "Solicitação recusada",
+  [WorkflowActionType.AttachmentAdded]: "Anexo incluído",
+  [WorkflowActionType.AttachmentRemoved]: "Anexo removido",
+  [WorkflowActionType.PaymentRegistered]: "Pagamento registrado"
+};

@@ -21,3 +21,9 @@ export interface SelectOption<TValue extends string = string> {
   value: TValue;
   label: string;
 }
+
+export interface DownloadedFile {
+  content: Blob;
+  fileName?: string;
+  contentType: string;
+}
