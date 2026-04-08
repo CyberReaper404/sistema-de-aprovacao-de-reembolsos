@@ -109,3 +109,19 @@ export interface CreateReimbursementPayload {
 export interface UpdateReimbursementDraftPayload extends CreateReimbursementPayload {
   rowVersion: string;
 }
+
+export interface ApproveReimbursementPayload {
+  comment?: string;
+}
+
+export interface RejectReimbursementPayload {
+  reason: string;
+}
+
+export interface RecordPaymentPayload {
+  paymentMethod: number;
+  paymentReference: string;
+  paidAt: string;
+  amountPaid: number;
+  notes?: string;
+}

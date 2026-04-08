@@ -1,11 +1,14 @@
 import { HttpClient } from "@/services/http/http-client";
 import type {
   Attachment,
+  ApproveReimbursementPayload,
   CreateReimbursementPayload,
   ReimbursementDetail,
   ReimbursementCategoryOption,
   ReimbursementListQuery,
   ReimbursementListResponse,
+  RecordPaymentPayload,
+  RejectReimbursementPayload,
   UpdateReimbursementDraftPayload,
   WorkflowAction
 } from "@/types/reimbursements";
@@ -35,6 +38,18 @@ export class ReimbursementService {
 
   public submit(id: string) {
     return this.httpClient.post<void>(`/reimbursements/${id}/submit`);
+  }
+
+  public approve(id: string, payload: ApproveReimbursementPayload) {
+    return this.httpClient.post<void>(`/reimbursements/${id}/approve`, payload);
+  }
+
+  public reject(id: string, payload: RejectReimbursementPayload) {
+    return this.httpClient.post<void>(`/reimbursements/${id}/reject`, payload);
+  }
+
+  public recordPayment(id: string, payload: RecordPaymentPayload) {
+    return this.httpClient.post<void>(`/reimbursements/${id}/payment`, payload);
   }
 
   public getAttachments(id: string) {

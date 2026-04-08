@@ -60,3 +60,9 @@ export const workflowActionTypeLabels: Record<WorkflowActionType, string> = {
   [WorkflowActionType.AttachmentRemoved]: "Anexo removido",
   [WorkflowActionType.PaymentRegistered]: "Pagamento registrado"
 };
+
+export const paymentMethodLabels: Record<PaymentMethod, string> = {
+  [PaymentMethod.BankTransfer]: "Transferência bancária",
+  [PaymentMethod.Pix]: "Pix",
+  [PaymentMethod.Other]: "Outro"
+};

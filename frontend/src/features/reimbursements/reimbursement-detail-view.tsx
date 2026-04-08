@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { StatusBadge } from "@/components/display/StatusBadge";
 import { PlaceholderState } from "@/components/feedback/PlaceholderState";
@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { reimbursementService } from "@/services/api";
 import { ApiError } from "@/services/http/api-error";
 import {
+  PaymentMethod,
   RequestStatus,
+  paymentMethodLabels,
   requestStatusLabels,
   workflowActionTypeLabels
 } from "@/types/domain";
@@ -75,17 +77,38 @@ function saveDownloadedFile(content: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function getDefaultPaidAtValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const localDate = new Date(now.getTime() - offset * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
 export function ReimbursementDetailView() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<ReimbursementDetail | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
+  const [approveComment, setApproveComment] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Pix);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [paidAt, setPaidAt] = useState(getDefaultPaidAtValue());
+
+  const loadDetail = async (requestId: string) => {
+    const nextDetail = await reimbursementService.getById(requestId);
+    setDetail(nextDetail);
+    return nextDetail;
+  };
 
   useEffect(() => {
     let isCancelled = false;
 
-    const loadDetail = async () => {
+    const execute = async () => {
       if (!id) {
         setErrorMessage("A solicitação informada é inválida.");
         setIsLoading(false);
@@ -94,6 +117,7 @@ export function ReimbursementDetailView() {
 
       setIsLoading(true);
       setErrorMessage(null);
+      setActionSuccessMessage(null);
 
       try {
         const nextDetail = await reimbursementService.getById(id);
@@ -117,12 +141,21 @@ export function ReimbursementDetailView() {
       }
     };
 
-    void loadDetail();
+    void execute();
 
     return () => {
       isCancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    setPaymentReference(detail.requestNumber);
+    setPaidAt(getDefaultPaidAtValue());
+  }, [detail?.id, detail?.requestNumber]);
 
   const availableActions = useMemo(() => {
     if (!detail) {
@@ -169,6 +202,7 @@ export function ReimbursementDetailView() {
 
     try {
       setDownloadingAttachmentId(attachment.id);
+      setErrorMessage(null);
       const file = await reimbursementService.downloadAttachment(detail.id, attachment.id);
       saveDownloadedFile(file.content, file.fileName ?? attachment.originalFileName);
     } catch (error) {
@@ -180,6 +214,125 @@ export function ReimbursementDetailView() {
       setErrorMessage(message);
     } finally {
       setDownloadingAttachmentId(null);
+    }
+  };
+
+  const reloadDetail = async () => {
+    if (!id) {
+      return;
+    }
+
+    await loadDetail(id);
+  };
+
+  const handleSubmitDraft = async () => {
+    if (!detail) {
+      return;
+    }
+
+    try {
+      setIsSubmittingAction(true);
+      setActionSuccessMessage(null);
+      setErrorMessage(null);
+      await reimbursementService.submit(detail.id);
+      await reloadDetail();
+      setActionSuccessMessage("Solicitação enviada com sucesso.");
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível enviar a solicitação.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const handleApprove = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!detail) {
+      return;
+    }
+
+    try {
+      setIsSubmittingAction(true);
+      setActionSuccessMessage(null);
+      setErrorMessage(null);
+      await reimbursementService.approve(detail.id, { comment: approveComment.trim() || undefined });
+      await reloadDetail();
+      setApproveComment("");
+      setActionSuccessMessage("Solicitação aprovada com sucesso.");
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível aprovar a solicitação.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const handleReject = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!detail) {
+      return;
+    }
+
+    try {
+      setIsSubmittingAction(true);
+      setActionSuccessMessage(null);
+      setErrorMessage(null);
+      await reimbursementService.reject(detail.id, { reason: rejectReason.trim() });
+      await reloadDetail();
+      setRejectReason("");
+      setActionSuccessMessage("Solicitação recusada com sucesso.");
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível recusar a solicitação.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const handleRecordPayment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!detail) {
+      return;
+    }
+
+    try {
+      setIsSubmittingAction(true);
+      setActionSuccessMessage(null);
+      setErrorMessage(null);
+      await reimbursementService.recordPayment(detail.id, {
+        paymentMethod,
+        paymentReference: paymentReference.trim(),
+        paidAt: new Date(paidAt).toISOString(),
+        amountPaid: detail.amount,
+        notes: paymentNotes.trim() || undefined
+      });
+      await reloadDetail();
+      setPaymentNotes("");
+      setActionSuccessMessage("Pagamento registrado com sucesso.");
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Não foi possível registrar o pagamento.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsSubmittingAction(false);
     }
   };
 
@@ -240,6 +393,7 @@ export function ReimbursementDetailView() {
       />
 
       {errorMessage ? <div className="inline-feedback inline-feedback--error">{errorMessage}</div> : null}
+      {actionSuccessMessage ? <div className="inline-feedback">{actionSuccessMessage}</div> : null}
 
       <section className="workspace-section detail-grid">
         <div className="detail-card">
@@ -319,6 +473,130 @@ export function ReimbursementDetailView() {
               <p>Nenhuma ação operacional está disponível para o seu perfil neste momento.</p>
             )}
           </div>
+
+          {detail.allowedActions.canSubmit ? (
+            <div className="detail-action-panel">
+              <h3>Enviar solicitação</h3>
+              <p>Use esta ação quando o rascunho já estiver completo e com todos os comprovantes necessários.</p>
+              <button
+                className="ui-button ui-button--primary"
+                type="button"
+                onClick={() => void handleSubmitDraft()}
+                disabled={isSubmittingAction}
+              >
+                {isSubmittingAction ? "Enviando..." : "Enviar solicitação"}
+              </button>
+            </div>
+          ) : null}
+
+          {detail.allowedActions.canApprove ? (
+            <form className="detail-action-panel" onSubmit={handleApprove}>
+              <h3>Aprovar solicitação</h3>
+              <p>O comentário é opcional e fica registrado no histórico do workflow.</p>
+              <label className="form-field form-field--compact">
+                <span>Comentário</span>
+                <textarea
+                  rows={3}
+                  value={approveComment}
+                  onChange={(event) => setApproveComment(event.target.value)}
+                  placeholder="Observação interna para registrar na aprovação."
+                  disabled={isSubmittingAction}
+                />
+              </label>
+              <button className="ui-button ui-button--primary" type="submit" disabled={isSubmittingAction}>
+                {isSubmittingAction ? "Aprovando..." : "Aprovar"}
+              </button>
+            </form>
+          ) : null}
+
+          {detail.allowedActions.canReject ? (
+            <form className="detail-action-panel" onSubmit={handleReject}>
+              <h3>Recusar solicitação</h3>
+              <p>A justificativa é obrigatória e precisa explicar o motivo da recusa.</p>
+              <label className="form-field form-field--compact">
+                <span>Motivo da recusa</span>
+                <textarea
+                  rows={4}
+                  value={rejectReason}
+                  onChange={(event) => setRejectReason(event.target.value)}
+                  placeholder="Descreva claramente o motivo da recusa."
+                  disabled={isSubmittingAction}
+                  required
+                />
+              </label>
+              <button className="ui-button ui-button--primary" type="submit" disabled={isSubmittingAction}>
+                {isSubmittingAction ? "Recusando..." : "Recusar"}
+              </button>
+            </form>
+          ) : null}
+
+          {detail.allowedActions.canRecordPayment ? (
+            <form className="detail-action-panel" onSubmit={handleRecordPayment}>
+              <h3>Registrar pagamento</h3>
+              <p>O valor registrado segue o total aprovado da solicitação.</p>
+              <div className="form-grid form-grid--compact">
+                <label className="form-field form-field--compact">
+                  <span>Método de pagamento</span>
+                  <select
+                    value={paymentMethod}
+                    onChange={(event) => setPaymentMethod(Number(event.target.value) as PaymentMethod)}
+                    disabled={isSubmittingAction}
+                  >
+                    {Object.values(PaymentMethod)
+                      .filter((value): value is PaymentMethod => typeof value === "number")
+                      .map((value) => (
+                        <option key={value} value={value}>
+                          {paymentMethodLabels[value]}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+
+                <label className="form-field form-field--compact">
+                  <span>Valor</span>
+                  <input type="text" value={formatCurrency(detail.amount, detail.currency)} disabled />
+                </label>
+
+                <label className="form-field form-field--compact">
+                  <span>Data do pagamento</span>
+                  <input
+                    type="datetime-local"
+                    value={paidAt}
+                    onChange={(event) => setPaidAt(event.target.value)}
+                    disabled={isSubmittingAction}
+                    required
+                  />
+                </label>
+
+                <label className="form-field form-field--compact">
+                  <span>Referência</span>
+                  <input
+                    type="text"
+                    value={paymentReference}
+                    onChange={(event) => setPaymentReference(event.target.value)}
+                    placeholder="Ex.: Comprovante PIX"
+                    disabled={isSubmittingAction}
+                    required
+                  />
+                </label>
+
+                <label className="form-field form-field--full form-field--compact">
+                  <span>Observações</span>
+                  <textarea
+                    rows={3}
+                    value={paymentNotes}
+                    onChange={(event) => setPaymentNotes(event.target.value)}
+                    placeholder="Informação complementar para o financeiro."
+                    disabled={isSubmittingAction}
+                  />
+                </label>
+              </div>
+
+              <button className="ui-button ui-button--primary" type="submit" disabled={isSubmittingAction}>
+                {isSubmittingAction ? "Registrando..." : "Registrar pagamento"}
+              </button>
+            </form>
+          ) : null}
         </div>
       </section>
 
