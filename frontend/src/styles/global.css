@@ -61,11 +61,21 @@ a {
   min-height: 100vh;
 }
 
+.auth-shell__content {
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: #e7e9e4;
+}
+
 .login-screen {
   display: grid;
-  grid-template-columns: minmax(360px, 520px) 1fr;
-  min-height: 100vh;
+  grid-template-columns: minmax(360px, 470px) minmax(320px, 1fr);
+  width: min(100%, 1120px);
+  min-height: min(720px, calc(100vh - 56px));
   background: var(--color-surface);
+  overflow: hidden;
+  box-shadow: 0 28px 70px rgba(17, 28, 20, 0.08);
 }
 
 .login-screen__form-side {
@@ -187,22 +197,19 @@ a {
 
 .login-screen__visual-side {
   position: relative;
-  overflow: hidden;
-  background: #129562;
-}
-
-.login-screen__visual-side::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(10, 24, 18, 0.08), rgba(10, 24, 18, 0.18));
+  display: grid;
+  place-items: center;
+  padding: 26px;
+  background: #f6f7f3;
 }
 
 .login-screen__visual-side img {
-  width: 100%;
-  height: 100%;
+  width: min(100%, 620px);
+  height: min(100%, 620px);
   object-fit: cover;
   display: block;
+  border-radius: 24px;
+  box-shadow: 0 24px 56px rgba(20, 41, 29, 0.12);
 }
 
 .app-shell {
@@ -692,10 +699,12 @@ a {
 @media (max-width: 960px) {
   .login-screen {
     grid-template-columns: 1fr;
+    width: min(100%, 720px);
+    min-height: auto;
   }
 
   .login-screen__form-side {
-    min-height: 100vh;
+    min-height: auto;
   }
 
   .login-screen__visual-side {
@@ -730,6 +739,10 @@ a {
 }
 
 @media (max-width: 680px) {
+  .auth-shell__content {
+    padding: 0;
+  }
+
   .login-screen__form-side {
     padding: 28px 22px;
   }
