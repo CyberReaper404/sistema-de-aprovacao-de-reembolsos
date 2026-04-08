@@ -10,6 +10,9 @@ obj/
 
 # Node
 node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
 
 # Environment
 .env
