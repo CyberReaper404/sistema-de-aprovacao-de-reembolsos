@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
+import { RedirectIfAuthenticated } from "@/features/auth/redirect-if-authenticated";
 import { RequireAuth } from "@/features/auth/require-auth";
 import { AuthLayout } from "@/layouts/AuthLayout";
 import { AppLayout } from "@/layouts/AppLayout";
@@ -16,8 +17,13 @@ export const router = createBrowserRouter([
     element: <AuthLayout />,
     children: [
       {
-        path: "/login",
-        element: <LoginPage />
+        element: <RedirectIfAuthenticated />,
+        children: [
+          {
+            path: "/login",
+            element: <LoginPage />
+          }
+        ]
       }
     ]
   },

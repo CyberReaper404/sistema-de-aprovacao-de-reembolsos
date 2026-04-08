@@ -101,6 +101,15 @@ a {
   gap: 18px;
 }
 
+.auth-form__error {
+  padding: 14px 16px;
+  border: 1px solid #ebc3c0;
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-soft);
+  color: #7b2e28;
+  line-height: 1.6;
+}
+
 .auth-form label {
   display: grid;
   gap: 8px;
@@ -127,6 +136,32 @@ a {
 .auth-form button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.auth-page__visual-copy {
+  display: grid;
+  gap: 14px;
+  max-width: 520px;
+}
+
+.auth-page__visual-copy span {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-page__visual-copy h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1.08;
+}
+
+.auth-page__visual-copy p {
+  margin: 0;
+  max-width: 440px;
+  line-height: 1.7;
+  color: rgba(247, 251, 248, 0.88);
 }
 
 .app-shell {
@@ -214,6 +249,21 @@ a {
   padding: 28px 36px 36px;
 }
 
+.app-shell__logout-button {
+  min-width: 108px;
+  height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.app-shell__logout-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .page-section {
   display: grid;
   gap: 18px;
@@ -261,6 +311,16 @@ a {
   margin: 0;
   color: var(--color-text-muted);
   line-height: 1.7;
+}
+
+.session-state {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  background: var(--color-background);
 }
 
 .not-found-page span {

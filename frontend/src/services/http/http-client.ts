@@ -3,19 +3,30 @@ import type { ProblemDetails } from "@/types/common";
 
 export interface HttpClientOptions {
   baseUrl?: string;
-  getAccessToken?: () => string | null;
 }
 
 type QueryValue = string | number | boolean | undefined | null;
 type QueryObject = object;
+type AccessTokenResolver = () => string | null;
+type UnauthorizedHandler = () => Promise<boolean>;
 
 export class HttpClient {
   private readonly baseUrl: string;
-  private readonly getAccessToken?: () => string | null;
+  private getAccessToken: AccessTokenResolver;
+  private onUnauthorized: UnauthorizedHandler | null;
 
   constructor(options: HttpClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? "/api";
-    this.getAccessToken = options.getAccessToken;
+    this.getAccessToken = () => null;
+    this.onUnauthorized = null;
+  }
+
+  public setAccessTokenResolver(resolver?: AccessTokenResolver) {
+    this.getAccessToken = resolver ?? (() => null);
+  }
+
+  public setUnauthorizedHandler(handler?: UnauthorizedHandler) {
+    this.onUnauthorized = handler ?? null;
   }
 
   public get<TResponse>(path: string, query?: QueryObject) {
@@ -40,11 +51,12 @@ export class HttpClient {
       method: string;
       body?: unknown;
       query?: QueryObject;
-    }
+    },
+    allowRetry = true
   ): Promise<TResponse> {
     const url = this.buildUrl(path, init.query);
     const headers = new Headers();
-    const accessToken = this.getAccessToken?.();
+    const accessToken = this.getAccessToken();
 
     if (accessToken) {
       headers.set("Authorization", `Bearer ${accessToken}`);
@@ -67,6 +79,14 @@ export class HttpClient {
     });
 
     if (!response.ok) {
+      if (response.status === 401 && allowRetry && this.onUnauthorized && this.shouldRetryUnauthorized(path)) {
+        const recovered = await this.onUnauthorized();
+
+        if (recovered) {
+          return this.request<TResponse>(path, init, false);
+        }
+      }
+
       throw await this.toApiError(response);
     }
 
@@ -90,6 +110,16 @@ export class HttpClient {
     }
 
     return `${url.pathname}${url.search}`;
+  }
+
+  private shouldRetryUnauthorized(path: string) {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+    return !(
+      normalizedPath.startsWith("/auth/login") ||
+      normalizedPath.startsWith("/auth/refresh") ||
+      normalizedPath.startsWith("/auth/logout")
+    );
   }
 
   private async toApiError(response: Response) {
