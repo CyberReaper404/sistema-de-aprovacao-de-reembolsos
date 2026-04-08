@@ -41,3 +41,11 @@ export const userRoleLabels: Record<UserRole, string> = {
   [UserRole.Finance]: "Financeiro",
   [UserRole.Administrator]: "Administrador"
 };
+
+export const requestStatusLabels: Record<RequestStatus, string> = {
+  [RequestStatus.Draft]: "Rascunho",
+  [RequestStatus.Submitted]: "Em análise",
+  [RequestStatus.Approved]: "Aprovada",
+  [RequestStatus.Rejected]: "Recusada",
+  [RequestStatus.Paid]: "Paga"
+};
