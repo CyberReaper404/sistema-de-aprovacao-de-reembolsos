@@ -45,7 +45,7 @@ public sealed class AttachmentAccessSecurityTests : IClassFixture<CustomWebAppli
             _factory.CategoryId,
             80m,
             "BRL",
-            new DateOnly(2026, 4, 21),
+            new DateOnly(2026, 4, 7),
             "Solicitação com comprovante"));
         createResponse.EnsureSuccessStatusCode();
         var created = await createResponse.Content.ReadFromJsonAsync<ReimbursementDetailDto>();
@@ -57,6 +57,12 @@ public sealed class AttachmentAccessSecurityTests : IClassFixture<CustomWebAppli
         form.Add(fileContent, "file", "comprovante.pdf");
 
         var attachmentResponse = await client.PostAsync($"/api/reimbursements/{created!.Id}/attachments", form);
+        if (!attachmentResponse.IsSuccessStatusCode)
+        {
+            var body = await attachmentResponse.Content.ReadAsStringAsync();
+            throw new Xunit.Sdk.XunitException($"Falha ao criar anexo. Status: {(int)attachmentResponse.StatusCode}. Corpo: {body}");
+        }
+
         attachmentResponse.EnsureSuccessStatusCode();
         var attachment = await attachmentResponse.Content.ReadFromJsonAsync<AttachmentDto>();
         Assert.NotNull(attachment);

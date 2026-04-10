@@ -10,16 +10,16 @@ import type {
 export class DashboardService {
   constructor(private readonly httpClient: HttpClient) {}
 
-  public getSummary() {
-    return this.httpClient.get<DashboardSummary>("/dashboard/summary");
+  public getSummary(query?: Pick<DashboardByPeriodQuery, "from" | "to">) {
+    return this.httpClient.get<DashboardSummary>("/dashboard/summary", query);
   }
 
-  public getByCategory() {
-    return this.httpClient.get<DashboardByCategoryItem[]>("/dashboard/by-category");
+  public getByCategory(query?: Pick<DashboardByPeriodQuery, "from" | "to">) {
+    return this.httpClient.get<DashboardByCategoryItem[]>("/dashboard/by-category", query);
   }
 
-  public getByStatus() {
-    return this.httpClient.get<DashboardByStatusItem[]>("/dashboard/by-status");
+  public getByStatus(query?: Pick<DashboardByPeriodQuery, "from" | "to">) {
+    return this.httpClient.get<DashboardByStatusItem[]>("/dashboard/by-status", query);
   }
 
   public getByPeriod(query: DashboardByPeriodQuery) {

@@ -83,11 +83,33 @@ public sealed class AuthAndReimbursementFlowTests : IClassFixture<CustomWebAppli
         await collaborator.PostAsync($"/api/reimbursements/{created!.Id}/submit", null);
 
         using var manager = _factory.CreateAuthenticatedClient("bruno@empresa.test", "Senha@123");
-        var approveResponse = await manager.PostAsJsonAsync($"/api/reimbursements/{created.Id}/approve", new ApproveReimbursementRequest("Aprovado"));
+        var approveResponse = await manager.PostAsJsonAsync($"/api/reimbursements/{created.Id}/approve", new ApproveReimbursementRequest(null, "Aprovado"));
         Assert.Equal(HttpStatusCode.NoContent, approveResponse.StatusCode);
 
         var detail = await manager.GetFromJsonAsync<ReimbursementDetailDto>($"/api/reimbursements/{created.Id}");
         Assert.Equal(RequestStatus.Approved, detail!.Status);
+    }
+
+    [Fact]
+    public async Task Gestor_DoCentroDeCusto_NaoDeveAprovarSemJustificativa()
+    {
+        using var collaborator = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
+
+        var createResponse = await collaborator.PostAsJsonAsync("/api/reimbursements", new CreateReimbursementRequest(
+            "Hotel",
+            _factory.CategoryId,
+            90,
+            "BRL",
+            new DateOnly(2026, 4, 5),
+            "Hospedagem de viagem"));
+
+        var created = await createResponse.Content.ReadFromJsonAsync<ReimbursementDetailDto>();
+        await collaborator.PostAsync($"/api/reimbursements/{created!.Id}/submit", null);
+
+        using var manager = _factory.CreateAuthenticatedClient("bruno@empresa.test", "Senha@123");
+        var approveResponse = await manager.PostAsJsonAsync($"/api/reimbursements/{created.Id}/approve", new ApproveReimbursementRequest(null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, approveResponse.StatusCode);
     }
 
     private sealed record ReimbursementDetailDto(Guid Id, RequestStatus Status);

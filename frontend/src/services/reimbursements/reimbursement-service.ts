@@ -3,6 +3,7 @@ import type {
   Attachment,
   ApproveReimbursementPayload,
   CreateReimbursementPayload,
+  RequestComplementationPayload,
   ReimbursementDetail,
   ReimbursementCategoryOption,
   ReimbursementListQuery,
@@ -46,6 +47,10 @@ export class ReimbursementService {
 
   public reject(id: string, payload: RejectReimbursementPayload) {
     return this.httpClient.post<void>(`/reimbursements/${id}/reject`, payload);
+  }
+
+  public requestComplementation(id: string, payload: RequestComplementationPayload) {
+    return this.httpClient.post<void>(`/reimbursements/${id}/complementation`, payload);
   }
 
   public recordPayment(id: string, payload: RecordPaymentPayload) {

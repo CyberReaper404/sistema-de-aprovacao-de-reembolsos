@@ -95,7 +95,7 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         var costCenter = new CostCenter("FIN-001", "Financeiro", now);
         var secondaryCostCenter = new CostCenter("TEC-002", "Tecnologia", now);
-        var category = new ReimbursementCategory("Transporte", "Despesas com deslocamento", 500, 100, now);
+        var category = new ReimbursementCategory("Transporte", "Despesas com deslocamento", 500, 100, false, 30, now);
         CostCenterId = costCenter.Id;
         SecondaryCostCenterId = secondaryCostCenter.Id;
         CategoryId = category.Id;

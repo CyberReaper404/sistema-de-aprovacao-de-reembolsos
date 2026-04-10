@@ -21,6 +21,8 @@ public interface IReimbursementService
 
     Task RejectAsync(Guid requestId, RejectReimbursementRequest request, CancellationToken cancellationToken);
 
+    Task RequestComplementationAsync(Guid requestId, RequestComplementationRequest request, CancellationToken cancellationToken);
+
     Task RecordPaymentAsync(Guid requestId, RecordPaymentRequest request, CancellationToken cancellationToken);
 
     Task<AttachmentResponse> AddAttachmentAsync(

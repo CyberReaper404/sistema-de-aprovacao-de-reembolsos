@@ -52,7 +52,7 @@ public sealed class AdministrativeConsistencyTests : IClassFixture<CustomWebAppl
         createCostCenterResponse.EnsureSuccessStatusCode();
         var createdCostCenter = await createCostCenterResponse.Content.ReadFromJsonAsync<CostCenterResponse>();
 
-        var createCategoryResponse = await adminClient.PostAsJsonAsync("/api/admin/categories", new CreateCategoryRequest("Hospedagem", "Diarias", 1500, 200));
+        var createCategoryResponse = await adminClient.PostAsJsonAsync("/api/admin/categories", new CreateCategoryRequest("Hospedagem", "Diarias", 1500, 200, true, 15));
         createCategoryResponse.EnsureSuccessStatusCode();
         var createdCategory = await createCategoryResponse.Content.ReadFromJsonAsync<CategoryResponse>();
 
@@ -63,7 +63,7 @@ public sealed class AdministrativeConsistencyTests : IClassFixture<CustomWebAppl
 
         var updateCategoryResponse = await adminClient.PutAsJsonAsync(
             $"/api/admin/categories/{createdCategory!.Id}",
-            new UpdateCategoryRequest(createdCategory.Name, "Diarias nacionais", 1800, 250, true));
+            new UpdateCategoryRequest(createdCategory.Name, "Diarias nacionais", 1800, 250, true, 20, true));
         updateCategoryResponse.EnsureSuccessStatusCode();
 
         using var scope = _factory.Services.CreateScope();

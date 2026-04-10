@@ -22,6 +22,13 @@ public sealed class ReimbursementService : IReimbursementService
         "image/png"
     };
 
+    private static readonly DecisionReasonCode[] ComplementationReasonCodes =
+    [
+        DecisionReasonCode.NeedMoreDetails,
+        DecisionReasonCode.NeedAdditionalDocument,
+        DecisionReasonCode.Other
+    ];
+
     private readonly AppDbContext _dbContext;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IDateTimeProvider _dateTimeProvider;
@@ -49,7 +56,7 @@ public sealed class ReimbursementService : IReimbursementService
     {
         var user = await GetCurrentUserEntityAsync(cancellationToken);
         EnsureRole(UserRole.Collaborator);
-        ValidateDraftPayload(request.Title, request.Amount, request.Currency, request.Description);
+        ValidateDraftPayload(request.Title, request.Amount, request.Currency, request.Description, request.ExpenseDate);
 
         var category = await GetActiveCategoryAsync(request.CategoryId, cancellationToken);
         ValidateCategoryPolicy(category, request.Amount);
@@ -68,7 +75,7 @@ public sealed class ReimbursementService : IReimbursementService
             now);
 
         _dbContext.ReimbursementRequests.Add(entity);
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.DraftCreated, null, RequestStatus.Draft, user.Id, null, now));
+        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.DraftCreated, null, RequestStatus.Draft, user.Id, null, null, now));
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return await GetByIdAsync(entity.Id, cancellationToken);
@@ -85,7 +92,9 @@ public sealed class ReimbursementService : IReimbursementService
                 x.Name,
                 x.Description,
                 x.MaxAmount,
-                x.ReceiptRequiredAboveAmount))
+                x.ReceiptRequiredAboveAmount,
+                x.ReceiptRequiredAlways,
+                x.SubmissionDeadlineDays))
             .ToListAsync(cancellationToken);
     }
 
@@ -95,12 +104,20 @@ public sealed class ReimbursementService : IReimbursementService
         EnsureOwner(entity);
         EnsureRowVersion(entity, request.RowVersion);
 
-        ValidateDraftPayload(request.Title, request.Amount, request.Currency, request.Description);
+        ValidateDraftPayload(request.Title, request.Amount, request.Currency, request.Description, request.ExpenseDate);
         ValidateCategoryPolicy(await GetActiveCategoryAsync(request.CategoryId, cancellationToken), request.Amount);
 
         var now = _dateTimeProvider.UtcNow;
         ExecuteDomainTransition(() => entity.UpdateDraft(request.Title, request.CategoryId, request.Amount, request.Currency, request.ExpenseDate, request.Description, now));
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.DraftUpdated, RequestStatus.Draft, RequestStatus.Draft, RequireCurrentUserId(), null, now));
+        _dbContext.WorkflowActions.Add(new WorkflowAction(
+            entity.Id,
+            WorkflowActionType.DraftUpdated,
+            entity.Status,
+            entity.Status,
+            RequireCurrentUserId(),
+            null,
+            entity.HasPendingComplementation ? "Complementação atualizada." : null,
+            now));
 
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
         return await GetByIdAsync(entity.Id, cancellationToken);
@@ -116,7 +133,7 @@ public sealed class ReimbursementService : IReimbursementService
     public async Task<PagedResult<ReimbursementListItemResponse>> GetPagedAsync(ReimbursementListQuery query, CancellationToken cancellationToken)
     {
         await EnsureRequestedCostCenterIsAllowedAsync(query.CostCenterId, cancellationToken);
-        var scopedQuery = await BuildScopedQueryAsync();
+        var scopedQuery = BuildScopedQueryAsync();
         IQueryable<ReimbursementRequest> dbQuery = scopedQuery
             .Include(x => x.Category)
             .Include(x => x.CostCenter);
@@ -197,45 +214,103 @@ public sealed class ReimbursementService : IReimbursementService
         var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
         EnsureOwner(entity);
         EnsureAttachmentPolicy(entity);
+        EnsureSubmissionDeadline(entity);
 
         var now = _dateTimeProvider.UtcNow;
-        ExecuteDomainTransition(() => entity.Submit(now));
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Submitted, RequestStatus.Draft, RequestStatus.Submitted, RequireCurrentUserId(), null, now));
+        var userId = RequireCurrentUserId();
+
+        if (entity.Status == RequestStatus.Draft)
+        {
+            ExecuteDomainTransition(() => entity.Submit(now));
+            _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Submitted, RequestStatus.Draft, RequestStatus.Submitted, userId, null, null, now));
+        }
+        else
+        {
+            ExecuteDomainTransition(() => entity.ResubmitAfterComplementation(now));
+            _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Submitted, RequestStatus.Submitted, RequestStatus.Submitted, userId, null, "Complementação enviada.", now));
+        }
+
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
     }
 
     public async Task ApproveAsync(Guid requestId, ApproveReimbursementRequest request, CancellationToken cancellationToken)
     {
+        ValidateApprovalDecision(request.ReasonCode, request.Comment);
+
         var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
         await EnsureManagerScopeAsync(entity, cancellationToken);
 
         var now = _dateTimeProvider.UtcNow;
         var userId = RequireCurrentUserId();
-        ExecuteDomainTransition(() => entity.Approve(userId, now));
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Approved, RequestStatus.Submitted, RequestStatus.Approved, userId, request.Comment, now));
+        var decisionComment = request.ReasonCode.HasValue
+            ? BuildDecisionComment(request.ReasonCode.Value, request.Comment)
+            : NormalizeOptionalComment(request.Comment);
+
+        ExecuteDomainTransition(() => entity.Approve(userId, request.ReasonCode, decisionComment, now));
+        _dbContext.WorkflowActions.Add(new WorkflowAction(
+            entity.Id,
+            WorkflowActionType.Approved,
+            RequestStatus.Submitted,
+            RequestStatus.Approved,
+            userId,
+            request.ReasonCode,
+            decisionComment,
+            now));
+
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
         await _auditService.WriteAsync("reimbursement.approved", "reimbursement_request", entity.Id.ToString(), AuditSeverity.Information, null, cancellationToken);
     }
 
     public async Task RejectAsync(Guid requestId, RejectReimbursementRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Reason))
-        {
-            throw Validation("A justificativa da recusa é obrigatória.", new Dictionary<string, string[]>
-            {
-                ["reason"] = ["A justificativa da recusa é obrigatória."]
-            });
-        }
+        ValidateRequiredDecisionReason(request.ReasonCode, request.Comment, "reject");
 
         var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
         await EnsureManagerScopeAsync(entity, cancellationToken);
 
         var now = _dateTimeProvider.UtcNow;
         var userId = RequireCurrentUserId();
-        ExecuteDomainTransition(() => entity.Reject(userId, request.Reason, now));
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.Rejected, RequestStatus.Submitted, RequestStatus.Rejected, userId, request.Reason, now));
+        var decisionComment = BuildDecisionComment(request.ReasonCode, request.Comment);
+
+        ExecuteDomainTransition(() => entity.Reject(userId, request.ReasonCode, decisionComment, now));
+        _dbContext.WorkflowActions.Add(new WorkflowAction(
+            entity.Id,
+            WorkflowActionType.Rejected,
+            RequestStatus.Submitted,
+            RequestStatus.Rejected,
+            userId,
+            request.ReasonCode,
+            decisionComment,
+            now));
+
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
         await _auditService.WriteAsync("reimbursement.rejected", "reimbursement_request", entity.Id.ToString(), AuditSeverity.Warning, null, cancellationToken);
+    }
+
+    public async Task RequestComplementationAsync(Guid requestId, RequestComplementationRequest request, CancellationToken cancellationToken)
+    {
+        ValidateRequiredDecisionReason(request.ReasonCode, request.Comment, "complementation", ComplementationReasonCodes);
+
+        var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
+        await EnsureManagerScopeAsync(entity, cancellationToken);
+
+        var now = _dateTimeProvider.UtcNow;
+        var userId = RequireCurrentUserId();
+        var decisionComment = BuildDecisionComment(request.ReasonCode, request.Comment);
+
+        ExecuteDomainTransition(() => entity.RequestComplementation(userId, request.ReasonCode, decisionComment, now));
+        _dbContext.WorkflowActions.Add(new WorkflowAction(
+            entity.Id,
+            WorkflowActionType.ComplementationRequested,
+            RequestStatus.Submitted,
+            RequestStatus.Submitted,
+            userId,
+            request.ReasonCode,
+            decisionComment,
+            now));
+
+        await SaveChangesHandlingConcurrencyAsync(cancellationToken);
+        await _auditService.WriteAsync("reimbursement.complementation_requested", "reimbursement_request", entity.Id.ToString(), AuditSeverity.Information, null, cancellationToken);
     }
 
     public async Task RecordPaymentAsync(Guid requestId, RecordPaymentRequest request, CancellationToken cancellationToken)
@@ -256,12 +331,20 @@ public sealed class ReimbursementService : IReimbursementService
             });
         }
 
+        if (request.PaidAt < entity.ApprovedAt)
+        {
+            throw Validation("A data de pagamento não pode ser anterior à aprovação.", new Dictionary<string, string[]>
+            {
+                ["paidAt"] = ["A data de pagamento não pode ser anterior à aprovação."]
+            });
+        }
+
         var now = _dateTimeProvider.UtcNow;
         var userId = RequireCurrentUserId();
         ExecuteDomainTransition(() => entity.RegisterPayment(userId, request.PaidAt, now));
 
         _dbContext.PaymentRecords.Add(new PaymentRecord(entity.Id, userId, request.PaidAt, request.PaymentMethod, request.PaymentReference, request.AmountPaid, request.Notes, now));
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.PaymentRegistered, RequestStatus.Approved, RequestStatus.Paid, userId, request.PaymentReference, now));
+        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.PaymentRegistered, RequestStatus.Approved, RequestStatus.Paid, userId, null, request.PaymentReference, now));
         await SaveChangesHandlingConcurrencyAsync(cancellationToken);
         await _auditService.WriteAsync("reimbursement.paid", "reimbursement_request", entity.Id.ToString(), AuditSeverity.Information, null, cancellationToken);
     }
@@ -271,9 +354,9 @@ public sealed class ReimbursementService : IReimbursementService
         var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
         EnsureOwner(entity);
 
-        if (entity.Status != RequestStatus.Draft)
+        if (entity.Status != RequestStatus.Draft && !(entity.Status == RequestStatus.Submitted && entity.HasPendingComplementation))
         {
-            throw new ConflictAppException("Somente rascunhos aceitam anexos.");
+            throw new ConflictAppException("Somente rascunhos ou solicitações com complementação pendente aceitam anexos.");
         }
 
         ValidateAttachment(fileName, contentType, sizeInBytes);
@@ -299,7 +382,7 @@ public sealed class ReimbursementService : IReimbursementService
                 _dateTimeProvider.UtcNow);
 
             _dbContext.ReimbursementAttachments.Add(attachment);
-            _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.AttachmentAdded, RequestStatus.Draft, RequestStatus.Draft, RequireCurrentUserId(), fileName, _dateTimeProvider.UtcNow));
+            _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.AttachmentAdded, entity.Status, entity.Status, RequireCurrentUserId(), null, fileName, _dateTimeProvider.UtcNow));
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             return new AttachmentResponse(attachment.Id, attachment.OriginalFileName, attachment.ContentType, attachment.SizeInBytes, attachment.CreatedAt);
@@ -316,16 +399,16 @@ public sealed class ReimbursementService : IReimbursementService
         var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
         EnsureOwner(entity);
 
-        if (entity.Status != RequestStatus.Draft)
+        if (entity.Status != RequestStatus.Draft && !(entity.Status == RequestStatus.Submitted && entity.HasPendingComplementation))
         {
-            throw new ConflictAppException("Somente rascunhos permitem remover anexos.");
+            throw new ConflictAppException("Somente rascunhos ou solicitações com complementação pendente permitem remover anexos.");
         }
 
         var attachment = entity.Attachments.SingleOrDefault(x => x.Id == attachmentId)
             ?? throw new NotFoundAppException("Anexo não encontrado.");
 
         _dbContext.ReimbursementAttachments.Remove(attachment);
-        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.AttachmentRemoved, RequestStatus.Draft, RequestStatus.Draft, RequireCurrentUserId(), attachment.OriginalFileName, _dateTimeProvider.UtcNow));
+        _dbContext.WorkflowActions.Add(new WorkflowAction(entity.Id, WorkflowActionType.AttachmentRemoved, entity.Status, entity.Status, RequireCurrentUserId(), null, attachment.OriginalFileName, _dateTimeProvider.UtcNow));
         await _dbContext.SaveChangesAsync(cancellationToken);
         await _attachmentStorage.DeleteAsync(attachment.StoredFileName, cancellationToken);
     }
@@ -362,7 +445,7 @@ public sealed class ReimbursementService : IReimbursementService
         var entity = await LoadRequestAggregateAsync(requestId, cancellationToken);
         await EnsureCanReadAsync(entity, cancellationToken);
         return entity.WorkflowActions.OrderBy(x => x.OccurredAt)
-            .Select(x => new WorkflowActionResponse(x.Id, x.ActionType, x.FromStatus, x.ToStatus, x.PerformedByUserId, x.Comment, x.OccurredAt))
+            .Select(x => new WorkflowActionResponse(x.Id, x.ActionType, x.FromStatus, x.ToStatus, x.PerformedByUserId, x.ReasonCode, x.Comment, x.OccurredAt))
             .ToArray();
     }
 
@@ -400,16 +483,20 @@ public sealed class ReimbursementService : IReimbursementService
             entity.ApprovedByUserId,
             entity.PaidByUserId,
             entity.RejectionReason,
+            entity.DecisionReasonCode,
+            entity.DecisionComment,
+            entity.HasPendingComplementation,
             entity.SubmittedAt,
             entity.ApprovedAt,
             entity.RejectedAt,
             entity.PaidAt,
+            entity.ComplementationRequestedAt,
             entity.CreatedAt,
             entity.UpdatedAt,
             entity.RowVersion.ToString("N"),
             allowedActions,
             entity.Attachments.OrderByDescending(x => x.CreatedAt).Select(x => new AttachmentResponse(x.Id, x.OriginalFileName, x.ContentType, x.SizeInBytes, x.CreatedAt)).ToArray(),
-            entity.WorkflowActions.OrderBy(x => x.OccurredAt).Select(x => new WorkflowActionResponse(x.Id, x.ActionType, x.FromStatus, x.ToStatus, x.PerformedByUserId, x.Comment, x.OccurredAt)).ToArray());
+            entity.WorkflowActions.OrderBy(x => x.OccurredAt).Select(x => new WorkflowActionResponse(x.Id, x.ActionType, x.FromStatus, x.ToStatus, x.PerformedByUserId, x.ReasonCode, x.Comment, x.OccurredAt)).ToArray());
     }
 
     private async Task<ReimbursementAllowedActions> GetAllowedActionsAsync(ReimbursementRequest entity, CancellationToken cancellationToken)
@@ -418,15 +505,17 @@ public sealed class ReimbursementService : IReimbursementService
         var role = _currentUserContext.Role;
         var isOwner = userId == entity.CreatedByUserId;
         var isScopedManager = role == UserRole.Manager && await IsManagerScopedAsync(entity.CostCenterId, cancellationToken);
+        var canEditAfterComplementation = entity.Status == RequestStatus.Submitted && entity.HasPendingComplementation;
 
         return new ReimbursementAllowedActions(
-            role == UserRole.Collaborator && isOwner && entity.Status == RequestStatus.Draft,
-            role == UserRole.Collaborator && isOwner && entity.Status == RequestStatus.Draft,
+            role == UserRole.Collaborator && isOwner && (entity.Status == RequestStatus.Draft || canEditAfterComplementation),
+            role == UserRole.Collaborator && isOwner && (entity.Status == RequestStatus.Draft || canEditAfterComplementation),
+            isScopedManager && entity.Status == RequestStatus.Submitted && !entity.HasPendingComplementation,
             isScopedManager && entity.Status == RequestStatus.Submitted,
-            isScopedManager && entity.Status == RequestStatus.Submitted,
+            isScopedManager && entity.Status == RequestStatus.Submitted && !entity.HasPendingComplementation,
             role == UserRole.Finance && entity.Status == RequestStatus.Approved,
-            role == UserRole.Collaborator && isOwner && entity.Status == RequestStatus.Draft,
-            role == UserRole.Collaborator && isOwner && entity.Status == RequestStatus.Draft);
+            role == UserRole.Collaborator && isOwner && (entity.Status == RequestStatus.Draft || canEditAfterComplementation),
+            role == UserRole.Collaborator && isOwner && (entity.Status == RequestStatus.Draft || canEditAfterComplementation));
     }
 
     private async Task EnsureCanReadAsync(ReimbursementRequest entity, CancellationToken cancellationToken)
@@ -487,7 +576,7 @@ public sealed class ReimbursementService : IReimbursementService
         }
     }
 
-    private async Task<IQueryable<ReimbursementRequest>> BuildScopedQueryAsync()
+    private IQueryable<ReimbursementRequest> BuildScopedQueryAsync()
     {
         var role = _currentUserContext.Role ?? throw new UnauthorizedAppException("Usuário não autenticado.");
         var userId = RequireCurrentUserId();
@@ -521,12 +610,38 @@ public sealed class ReimbursementService : IReimbursementService
 
     private void EnsureAttachmentPolicy(ReimbursementRequest entity)
     {
+        if (entity.Category?.ReceiptRequiredAlways == true && entity.Attachments.Count == 0)
+        {
+            throw Validation("A categoria exige comprovante obrigatório.", new Dictionary<string, string[]>
+            {
+                ["attachments"] = ["A categoria exige comprovante obrigatório."]
+            });
+        }
+
         var threshold = entity.Category?.ReceiptRequiredAboveAmount;
         if (threshold.HasValue && entity.Amount >= threshold.Value && entity.Attachments.Count == 0)
         {
             throw Validation("É obrigatório anexar comprovante para este valor.", new Dictionary<string, string[]>
             {
                 ["attachments"] = ["É obrigatório anexar comprovante para este valor."]
+            });
+        }
+    }
+
+    private void EnsureSubmissionDeadline(ReimbursementRequest entity)
+    {
+        var deadlineDays = entity.Category?.SubmissionDeadlineDays;
+        if (!deadlineDays.HasValue)
+        {
+            return;
+        }
+
+        var today = DateOnly.FromDateTime(_dateTimeProvider.UtcNow.UtcDateTime.Date);
+        if (entity.ExpenseDate.AddDays(deadlineDays.Value) < today)
+        {
+            throw Validation("A solicitação foi enviada fora do prazo permitido para a categoria.", new Dictionary<string, string[]>
+            {
+                ["expenseDate"] = ["A solicitação foi enviada fora do prazo permitido para a categoria."]
             });
         }
     }
@@ -542,7 +657,7 @@ public sealed class ReimbursementService : IReimbursementService
         }
     }
 
-    private void ValidateDraftPayload(string title, decimal amount, string currency, string description)
+    private void ValidateDraftPayload(string title, decimal amount, string currency, string description, DateOnly expenseDate)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -566,9 +681,74 @@ public sealed class ReimbursementService : IReimbursementService
             errors["description"] = ["A descrição é obrigatória."];
         }
 
+        var today = DateOnly.FromDateTime(_dateTimeProvider.UtcNow.UtcDateTime.Date);
+        if (expenseDate > today)
+        {
+            errors["expenseDate"] = ["A data da despesa não pode ser futura."];
+        }
+
         if (errors.Count > 0)
         {
             throw Validation("A solicitação contém dados inválidos.", errors);
+        }
+    }
+
+    private void ValidateRequiredDecisionReason(DecisionReasonCode reasonCode, string? comment, string fieldPrefix, IReadOnlyCollection<DecisionReasonCode>? allowedReasons = null)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (allowedReasons is not null && !allowedReasons.Contains(reasonCode))
+        {
+            errors["reasonCode"] = ["O motivo informado não é permitido para esta ação."];
+        }
+
+        if (reasonCode == DecisionReasonCode.Other && string.IsNullOrWhiteSpace(comment))
+        {
+            errors["comment"] = ["O comentário é obrigatório quando o motivo for Outro."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw Validation($"A ação de {fieldPrefix} contém dados inválidos.", errors);
+        }
+    }
+
+    private void ValidateApprovalDecision(DecisionReasonCode? reasonCode, string? comment)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (string.IsNullOrWhiteSpace(comment))
+        {
+            errors["comment"] = ["A justificativa da aprovação é obrigatória."];
+        }
+
+        if (reasonCode == DecisionReasonCode.Other && string.IsNullOrWhiteSpace(comment))
+        {
+            errors["comment"] = ["O comentário é obrigatório quando o motivo for Outro."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw Validation("A ação de aprovação contém dados inválidos.", errors);
+        }
+    }
+
+    private void ValidateOptionalDecisionReason(DecisionReasonCode? reasonCode, string? comment, string fieldPrefix)
+    {
+        if (!reasonCode.HasValue)
+        {
+            return;
+        }
+
+        var errors = new Dictionary<string, string[]>();
+        if (reasonCode == DecisionReasonCode.Other && string.IsNullOrWhiteSpace(comment))
+        {
+            errors["comment"] = ["O comentário é obrigatório quando o motivo for Outro."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw Validation($"A ação de {fieldPrefix} contém dados inválidos.", errors);
         }
     }
 
@@ -621,6 +801,35 @@ public sealed class ReimbursementService : IReimbursementService
     private static string GenerateRequestNumber(DateTimeOffset now)
     {
         return $"RMB-{now:yyyyMMdd}-{RandomNumberGenerator.GetHexString(3)}";
+    }
+
+    private static string? NormalizeOptionalComment(string? comment)
+    {
+        return string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+    }
+
+    private static string BuildDecisionComment(DecisionReasonCode reasonCode, string? comment)
+    {
+        return string.IsNullOrWhiteSpace(comment) ? GetDecisionReasonLabel(reasonCode) : comment.Trim();
+    }
+
+    private static string GetDecisionReasonLabel(DecisionReasonCode reasonCode)
+    {
+        return reasonCode switch
+        {
+            DecisionReasonCode.MissingReceipt => "Comprovante obrigatório ausente.",
+            DecisionReasonCode.InvalidReceipt => "Comprovante inválido ou ilegível.",
+            DecisionReasonCode.OutOfPolicy => "Despesa fora da política de reembolso.",
+            DecisionReasonCode.OutOfDeadline => "Solicitação enviada fora do prazo permitido.",
+            DecisionReasonCode.CategoryMismatch => "Categoria incompatível com a despesa informada.",
+            DecisionReasonCode.DuplicateRequest => "Possível duplicidade de solicitação.",
+            DecisionReasonCode.InconsistentAmount => "Valor inconsistente com os dados apresentados.",
+            DecisionReasonCode.FraudSuspicion => "Há indícios de inconsistência relevante ou possível fraude.",
+            DecisionReasonCode.NeedMoreDetails => "É necessário complementar os detalhes da despesa.",
+            DecisionReasonCode.NeedAdditionalDocument => "É necessário anexar documentação complementar.",
+            DecisionReasonCode.Other => "Outro motivo informado.",
+            _ => "Motivo operacional registrado."
+        };
     }
 
     private static IEnumerable<ReimbursementListItemResponse> ApplyOrdering(IEnumerable<ReimbursementListItemResponse> query, string sort)

@@ -4,13 +4,17 @@ public sealed record CreateCategoryRequest(
     string Name,
     string? Description,
     decimal? MaxAmount,
-    decimal? ReceiptRequiredAboveAmount);
+    decimal? ReceiptRequiredAboveAmount,
+    bool ReceiptRequiredAlways,
+    int? SubmissionDeadlineDays);
 
 public sealed record UpdateCategoryRequest(
     string Name,
     string? Description,
     decimal? MaxAmount,
     decimal? ReceiptRequiredAboveAmount,
+    bool ReceiptRequiredAlways,
+    int? SubmissionDeadlineDays,
     bool IsActive);
 
 public sealed record CategoryResponse(
@@ -19,5 +23,6 @@ public sealed record CategoryResponse(
     string? Description,
     bool IsActive,
     decimal? MaxAmount,
-    decimal? ReceiptRequiredAboveAmount);
-
+    decimal? ReceiptRequiredAboveAmount,
+    bool ReceiptRequiredAlways,
+    int? SubmissionDeadlineDays);

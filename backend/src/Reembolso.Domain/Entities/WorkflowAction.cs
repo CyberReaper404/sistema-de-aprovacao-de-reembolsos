@@ -11,6 +11,7 @@ public class WorkflowAction
     public RequestStatus? FromStatus { get; private set; }
     public RequestStatus ToStatus { get; private set; }
     public Guid PerformedByUserId { get; private set; }
+    public DecisionReasonCode? ReasonCode { get; private set; }
     public string? Comment { get; private set; }
     public DateTimeOffset OccurredAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -24,6 +25,7 @@ public class WorkflowAction
         RequestStatus? fromStatus,
         RequestStatus toStatus,
         Guid performedByUserId,
+        DecisionReasonCode? reasonCode,
         string? comment,
         DateTimeOffset occurredAt)
     {
@@ -32,8 +34,8 @@ public class WorkflowAction
         FromStatus = fromStatus;
         ToStatus = toStatus;
         PerformedByUserId = performedByUserId;
+        ReasonCode = reasonCode;
         Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
         OccurredAt = occurredAt;
     }
 }
-

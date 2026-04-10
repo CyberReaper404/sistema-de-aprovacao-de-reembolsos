@@ -89,6 +89,14 @@ public sealed class ReimbursementsController : ControllerBase
     }
 
     [EnableRateLimiting("critical")]
+    [HttpPost("{id:guid}/complementation")]
+    public async Task<IActionResult> RequestComplementation(Guid id, [FromBody] RequestComplementationRequest request, CancellationToken cancellationToken)
+    {
+        await _service.RequestComplementationAsync(id, request, cancellationToken);
+        return NoContent();
+    }
+
+    [EnableRateLimiting("critical")]
     [HttpPost("{id:guid}/payment")]
     public async Task<IActionResult> RecordPayment(Guid id, [FromBody] RecordPaymentRequest request, CancellationToken cancellationToken)
     {

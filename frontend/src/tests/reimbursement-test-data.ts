@@ -48,6 +48,10 @@ export function createReimbursementDetail(overrides: Partial<ReimbursementDetail
     approvedByUserId: null,
     paidByUserId: null,
     rejectionReason: null,
+    decisionReasonCode: null,
+    decisionComment: null,
+    hasPendingComplementation: false,
+    complementationRequestedAt: null,
     submittedAt: null,
     approvedAt: null,
     rejectedAt: null,
@@ -62,7 +66,8 @@ export function createReimbursementDetail(overrides: Partial<ReimbursementDetail
       canReject: false,
       canRecordPayment: false,
       canUploadAttachment: true,
-      canDeleteAttachment: true
+      canDeleteAttachment: true,
+      canRequestComplementation: false
     },
     attachments: [],
     workflowActions: [
@@ -72,6 +77,7 @@ export function createReimbursementDetail(overrides: Partial<ReimbursementDetail
         fromStatus: null,
         toStatus: RequestStatus.Draft,
         performedByUserId: "usuario-1",
+        reasonCode: null,
         comment: null,
         occurredAt: "2026-04-05T14:20:00Z"
       }

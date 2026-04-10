@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReimbursementDetailView } from "@/features/reimbursements/reimbursement-detail-view";
 import { createReimbursementDetail, paymentMethodExample } from "@/tests/reimbursement-test-data";
-import { PaymentMethod, RequestStatus } from "@/types/domain";
+import { DecisionReasonCode, PaymentMethod, RequestStatus } from "@/types/domain";
 
 const { mockedUseParams, reimbursementServiceMock } = vi.hoisted(() => ({
   mockedUseParams: vi.fn(),
@@ -13,6 +13,7 @@ const { mockedUseParams, reimbursementServiceMock } = vi.hoisted(() => ({
     submit: vi.fn(),
     approve: vi.fn(),
     reject: vi.fn(),
+    requestComplementation: vi.fn(),
     recordPayment: vi.fn(),
     downloadAttachment: vi.fn()
   }
@@ -38,11 +39,12 @@ describe("ReimbursementDetailView", () => {
     reimbursementServiceMock.submit.mockReset();
     reimbursementServiceMock.approve.mockReset();
     reimbursementServiceMock.reject.mockReset();
+    reimbursementServiceMock.requestComplementation.mockReset();
     reimbursementServiceMock.recordPayment.mockReset();
     reimbursementServiceMock.downloadAttachment.mockReset();
   });
 
-  it("deve aprovar a solicitacao com comentario opcional", async () => {
+  it("deve aprovar a solicitacao com justificativa obrigatoria", async () => {
     const user = userEvent.setup();
     const submittedDetail = createReimbursementDetail({
       status: RequestStatus.Submitted,
@@ -53,23 +55,24 @@ describe("ReimbursementDetailView", () => {
         canReject: true,
         canRecordPayment: false,
         canUploadAttachment: false,
-        canDeleteAttachment: false
+        canDeleteAttachment: false,
+        canRequestComplementation: true
       }
     });
     const approvedDetail = createReimbursementDetail({
       status: RequestStatus.Approved,
+      decisionComment: "Solicitação aprovada após conferência do comprovante e do centro de custo.",
       approvedAt: "2026-04-06T13:00:00Z",
       allowedActions: {
         ...submittedDetail.allowedActions,
         canApprove: false,
-        canReject: false
+        canReject: false,
+        canRequestComplementation: false
       }
     });
 
     mockedUseParams.mockReturnValue({ id: submittedDetail.id });
-    reimbursementServiceMock.getById
-      .mockResolvedValueOnce(submittedDetail)
-      .mockResolvedValueOnce(approvedDetail);
+    reimbursementServiceMock.getById.mockResolvedValueOnce(submittedDetail).mockResolvedValueOnce(approvedDetail);
     reimbursementServiceMock.approve.mockResolvedValue(undefined);
 
     render(
@@ -79,19 +82,20 @@ describe("ReimbursementDetailView", () => {
     );
 
     await screen.findByText(submittedDetail.requestNumber);
-    await user.type(screen.getAllByRole("textbox")[0], "Aprovado apos revisao.");
+    await user.type(screen.getByLabelText("Justificativa da aprovação"), "Solicitação aprovada após conferência do comprovante e do centro de custo.");
     await user.click(screen.getByRole("button", { name: "Aprovar" }));
 
     await waitFor(() => {
       expect(reimbursementServiceMock.approve).toHaveBeenCalledWith(submittedDetail.id, {
-        comment: "Aprovado apos revisao."
+        comment: "Solicitação aprovada após conferência do comprovante e do centro de custo."
       });
     });
 
     expect(await screen.findByText(/aprovada com sucesso/i)).toBeInTheDocument();
+    expect(await screen.findByText("Despesa validada")).toBeInTheDocument();
   });
 
-  it("deve recusar a solicitacao com justificativa obrigatoria", async () => {
+  it("deve recusar a solicitacao com motivo padronizado", async () => {
     const user = userEvent.setup();
     const submittedDetail = createReimbursementDetail({
       status: RequestStatus.Submitted,
@@ -102,12 +106,15 @@ describe("ReimbursementDetailView", () => {
         canReject: true,
         canRecordPayment: false,
         canUploadAttachment: false,
-        canDeleteAttachment: false
+        canDeleteAttachment: false,
+        canRequestComplementation: false
       }
     });
     const rejectedDetail = createReimbursementDetail({
       status: RequestStatus.Rejected,
-      rejectionReason: "Falta comprovante fiscal valido.",
+      decisionReasonCode: DecisionReasonCode.MissingReceipt,
+      decisionComment: "Falta comprovante fiscal legível.",
+      rejectionReason: "Falta comprovante fiscal legível.",
       allowedActions: {
         ...submittedDetail.allowedActions,
         canReject: false
@@ -115,9 +122,7 @@ describe("ReimbursementDetailView", () => {
     });
 
     mockedUseParams.mockReturnValue({ id: submittedDetail.id });
-    reimbursementServiceMock.getById
-      .mockResolvedValueOnce(submittedDetail)
-      .mockResolvedValueOnce(rejectedDetail);
+    reimbursementServiceMock.getById.mockResolvedValueOnce(submittedDetail).mockResolvedValueOnce(rejectedDetail);
     reimbursementServiceMock.reject.mockResolvedValue(undefined);
 
     render(
@@ -127,16 +132,71 @@ describe("ReimbursementDetailView", () => {
     );
 
     await screen.findByText(submittedDetail.requestNumber);
-    await user.type(screen.getAllByRole("textbox")[0], "Falta comprovante fiscal valido.");
+    await user.selectOptions(screen.getByLabelText("Motivo padronizado"), String(DecisionReasonCode.MissingReceipt));
+    await user.type(screen.getByLabelText("Observação da recusa"), "Falta comprovante fiscal legível.");
     await user.click(screen.getByRole("button", { name: "Recusar" }));
 
     await waitFor(() => {
       expect(reimbursementServiceMock.reject).toHaveBeenCalledWith(submittedDetail.id, {
-        reason: "Falta comprovante fiscal valido."
+        reasonCode: DecisionReasonCode.MissingReceipt,
+        comment: "Falta comprovante fiscal legível."
       });
     });
 
-    expect(await screen.findByText(/recusada com sucesso/i)).toBeInTheDocument();
+    expect(await screen.findByText(/comprovante ausente/i)).toBeInTheDocument();
+  });
+
+  it("deve solicitar complementacao com motivo padronizado", async () => {
+    const user = userEvent.setup();
+    const submittedDetail = createReimbursementDetail({
+      status: RequestStatus.Submitted,
+      allowedActions: {
+        canEditDraft: false,
+        canSubmit: false,
+        canApprove: false,
+        canReject: false,
+        canRecordPayment: false,
+        canUploadAttachment: false,
+        canDeleteAttachment: false,
+        canRequestComplementation: true
+      }
+    });
+    const complementedDetail = createReimbursementDetail({
+      status: RequestStatus.Submitted,
+      hasPendingComplementation: true,
+      complementationRequestedAt: "2026-04-06T13:00:00Z",
+      decisionReasonCode: DecisionReasonCode.NeedAdditionalDocument,
+      decisionComment: "Anexe um comprovante legível com emissor, data e valor.",
+      allowedActions: {
+        ...submittedDetail.allowedActions,
+        canRequestComplementation: false
+      }
+    });
+
+    mockedUseParams.mockReturnValue({ id: submittedDetail.id });
+    reimbursementServiceMock.getById.mockResolvedValueOnce(submittedDetail).mockResolvedValueOnce(complementedDetail);
+    reimbursementServiceMock.requestComplementation.mockResolvedValue(undefined);
+
+    render(
+      <MemoryRouter>
+        <ReimbursementDetailView />
+      </MemoryRouter>
+    );
+
+    await screen.findByText(submittedDetail.requestNumber);
+    const selects = screen.getAllByLabelText("Motivo padronizado");
+    await user.selectOptions(selects[0], String(DecisionReasonCode.NeedAdditionalDocument));
+    await user.type(screen.getByLabelText("Orientação para o colaborador"), "Anexe um comprovante legível com emissor, data e valor.");
+    await user.click(screen.getByRole("button", { name: "Solicitar complementação" }));
+
+    await waitFor(() => {
+      expect(reimbursementServiceMock.requestComplementation).toHaveBeenCalledWith(submittedDetail.id, {
+        reasonCode: DecisionReasonCode.NeedAdditionalDocument,
+        comment: "Anexe um comprovante legível com emissor, data e valor."
+      });
+    });
+
+    expect(await screen.findByText(/complementação solicitada com sucesso/i)).toBeInTheDocument();
   });
 
   it("deve registrar pagamento com os dados informados", async () => {
@@ -150,7 +210,8 @@ describe("ReimbursementDetailView", () => {
         canReject: false,
         canRecordPayment: true,
         canUploadAttachment: false,
-        canDeleteAttachment: false
+        canDeleteAttachment: false,
+        canRequestComplementation: false
       }
     });
     const paidDetail = createReimbursementDetail({
@@ -163,9 +224,7 @@ describe("ReimbursementDetailView", () => {
     });
 
     mockedUseParams.mockReturnValue({ id: approvedDetail.id });
-    reimbursementServiceMock.getById
-      .mockResolvedValueOnce(approvedDetail)
-      .mockResolvedValueOnce(paidDetail);
+    reimbursementServiceMock.getById.mockResolvedValueOnce(approvedDetail).mockResolvedValueOnce(paidDetail);
     reimbursementServiceMock.recordPayment.mockResolvedValue(undefined);
 
     render(
@@ -175,11 +234,8 @@ describe("ReimbursementDetailView", () => {
     );
 
     await screen.findByText(approvedDetail.requestNumber);
-    const paymentSelect = screen.getByRole("combobox");
-    const notesInput = document.querySelector("textarea") as HTMLTextAreaElement;
-
-    await user.selectOptions(paymentSelect, String(paymentMethodExample));
-    await user.type(notesInput, "Pagamento confirmado pelo financeiro.");
+    await user.selectOptions(screen.getByLabelText("Método de pagamento"), String(paymentMethodExample));
+    await user.type(screen.getByLabelText("Observações"), "Pagamento confirmado pelo financeiro.");
     await user.click(screen.getByRole("button", { name: "Registrar pagamento" }));
 
     await waitFor(() => {

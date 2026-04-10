@@ -33,7 +33,7 @@ public sealed class ReimbursementRequestTests
             DateTimeOffset.UtcNow);
 
         var exception = Assert.Throws<DomainRuleException>(action);
-        Assert.Equal("Somente rascunhos podem ser editados.", exception.Message);
+        Assert.Equal("Somente rascunhos ou solicitações com complementação pendente podem ser editados.", exception.Message);
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class ReimbursementRequestTests
         var request = CriarDraft();
         request.Submit(DateTimeOffset.UtcNow);
 
-        request.Approve(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        request.Approve(Guid.NewGuid(), null, null, DateTimeOffset.UtcNow);
 
         Assert.Equal(RequestStatus.Approved, request.Status);
         Assert.NotNull(request.ApprovedAt);
@@ -67,10 +67,11 @@ public sealed class ReimbursementRequestTests
         var request = CriarDraft();
         request.Submit(DateTimeOffset.UtcNow);
 
-        request.Reject(Guid.NewGuid(), "Despesa fora da política", DateTimeOffset.UtcNow);
+        request.Reject(Guid.NewGuid(), DecisionReasonCode.OutOfPolicy, "Despesa fora da política", DateTimeOffset.UtcNow);
 
         Assert.Equal(RequestStatus.Rejected, request.Status);
         Assert.Equal("Despesa fora da política", request.RejectionReason);
+        Assert.Equal(DecisionReasonCode.OutOfPolicy, request.DecisionReasonCode);
         Assert.NotNull(request.RejectedAt);
     }
 
@@ -79,7 +80,7 @@ public sealed class ReimbursementRequestTests
     {
         var request = CriarDraft();
         request.Submit(DateTimeOffset.UtcNow);
-        request.Approve(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        request.Approve(Guid.NewGuid(), null, null, DateTimeOffset.UtcNow);
 
         request.RegisterPayment(Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
@@ -93,7 +94,7 @@ public sealed class ReimbursementRequestTests
     {
         var request = CriarDraft();
 
-        var action = () => request.Approve(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        var action = () => request.Approve(Guid.NewGuid(), null, null, DateTimeOffset.UtcNow);
 
         var exception = Assert.Throws<DomainRuleException>(action);
         Assert.Equal("A solicitação precisa estar enviada para ser aprovada.", exception.Message);
@@ -108,6 +109,35 @@ public sealed class ReimbursementRequestTests
 
         var exception = Assert.Throws<DomainRuleException>(action);
         Assert.Equal("Somente solicitações aprovadas podem ser pagas.", exception.Message);
+    }
+
+    [Fact]
+    public void RequestComplementation_DeveMarcarSolicitacaoComoPendente()
+    {
+        var request = CriarDraft();
+        request.Submit(DateTimeOffset.UtcNow);
+
+        request.RequestComplementation(Guid.NewGuid(), DecisionReasonCode.NeedAdditionalDocument, "Anexar nota fiscal legível.", DateTimeOffset.UtcNow);
+
+        Assert.True(request.HasPendingComplementation);
+        Assert.Equal(DecisionReasonCode.NeedAdditionalDocument, request.DecisionReasonCode);
+        Assert.Equal("Anexar nota fiscal legível.", request.DecisionComment);
+        Assert.NotNull(request.ComplementationRequestedAt);
+        Assert.Equal(RequestStatus.Submitted, request.Status);
+    }
+
+    [Fact]
+    public void ResubmitAfterComplementation_DeveLimparPendencia()
+    {
+        var request = CriarDraft();
+        request.Submit(DateTimeOffset.UtcNow);
+        request.RequestComplementation(Guid.NewGuid(), DecisionReasonCode.NeedMoreDetails, "Detalhar agenda corporativa.", DateTimeOffset.UtcNow);
+
+        request.ResubmitAfterComplementation(DateTimeOffset.UtcNow);
+
+        Assert.False(request.HasPendingComplementation);
+        Assert.Null(request.DecisionReasonCode);
+        Assert.Null(request.DecisionComment);
     }
 
     private static ReimbursementRequest CriarDraft()

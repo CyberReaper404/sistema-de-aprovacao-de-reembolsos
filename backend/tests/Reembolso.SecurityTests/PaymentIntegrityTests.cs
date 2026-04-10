@@ -71,7 +71,7 @@ public sealed class PaymentIntegrityTests : IClassFixture<CustomWebApplicationFa
             _factory.CategoryId,
             90m,
             "BRL",
-            new DateOnly(2026, 4, 20),
+            new DateOnly(2026, 4, 7),
             "Despesa pronta para pagamento"));
         createResponse.EnsureSuccessStatusCode();
         var created = await createResponse.Content.ReadFromJsonAsync<ReimbursementDetailDto>();
@@ -83,7 +83,7 @@ public sealed class PaymentIntegrityTests : IClassFixture<CustomWebApplicationFa
         using var managerClient = _factory.CreateAuthenticatedClient("bruno@empresa.test", "Senha@123");
         var approveResponse = await managerClient.PostAsJsonAsync(
             $"/api/reimbursements/{created.Id}/approve",
-            new ApproveReimbursementRequest("Aprovado para pagamento"));
+            new ApproveReimbursementRequest(null, "Aprovado para pagamento"));
         Assert.Equal(HttpStatusCode.NoContent, approveResponse.StatusCode);
 
         return created.Id;

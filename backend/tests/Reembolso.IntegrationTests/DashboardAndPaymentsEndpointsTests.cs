@@ -22,7 +22,7 @@ public sealed class DashboardAndPaymentsEndpointsTests : IClassFixture<CustomWeb
     {
         var reimbursementId = await CriarAprovarEPagarSolicitacaoAsync(
             "alice@empresa.test",
-            new DateOnly(2026, 4, 10),
+            new DateOnly(2026, 4, 5),
             90m,
             "Pagamento hotel",
             "HOTEL-001");
@@ -69,18 +69,18 @@ public sealed class DashboardAndPaymentsEndpointsTests : IClassFixture<CustomWeb
     {
         await CriarAprovarEPagarSolicitacaoAsync(
             "alice@empresa.test",
-            new DateOnly(2026, 4, 5),
+            new DateOnly(2026, 3, 15),
             90m,
-            "Taxi abril",
+            "Taxi marco",
             "TX-001");
 
         using var collaboratorClient = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
         var createMayResponse = await collaboratorClient.PostAsJsonAsync("/api/reimbursements", new CreateReimbursementRequest(
-            "Almoco maio",
+            "Almoco abril",
             _factory.CategoryId,
             60m,
             "BRL",
-            new DateOnly(2026, 5, 12),
+            new DateOnly(2026, 4, 6),
             "Refeicao externa"));
         createMayResponse.EnsureSuccessStatusCode();
         var mayRequest = await createMayResponse.Content.ReadFromJsonAsync<ReimbursementDetailDto>();
@@ -90,22 +90,22 @@ public sealed class DashboardAndPaymentsEndpointsTests : IClassFixture<CustomWeb
 
         using var financeClient = _factory.CreateAuthenticatedClient("fernanda@empresa.test", "Senha@123");
         var dashboardItems = await financeClient.GetFromJsonAsync<IReadOnlyCollection<DashboardByPeriodItemResponse>>(
-            "/api/dashboard/by-period?from=2026-04-01&to=2026-05-31&groupBy=month");
+            "/api/dashboard/by-period?from=2026-03-01&to=2026-04-30&groupBy=month");
 
         Assert.NotNull(dashboardItems);
         Assert.Equal(2, dashboardItems!.Count);
 
+        var march = dashboardItems.Single(x => x.PeriodStart == new DateOnly(2026, 3, 1));
+        Assert.Equal(1, march.TotalRequests);
+        Assert.Equal(90m, march.TotalAmount);
+        Assert.Equal(1, march.PaidRequests);
+        Assert.Equal(90m, march.PaidAmount);
+
         var april = dashboardItems.Single(x => x.PeriodStart == new DateOnly(2026, 4, 1));
         Assert.Equal(1, april.TotalRequests);
-        Assert.Equal(90m, april.TotalAmount);
-        Assert.Equal(1, april.PaidRequests);
-        Assert.Equal(90m, april.PaidAmount);
-
-        var may = dashboardItems.Single(x => x.PeriodStart == new DateOnly(2026, 5, 1));
-        Assert.Equal(1, may.TotalRequests);
-        Assert.Equal(60m, may.TotalAmount);
-        Assert.Equal(0, may.PaidRequests);
-        Assert.Equal(0m, may.PaidAmount);
+        Assert.Equal(60m, april.TotalAmount);
+        Assert.Equal(0, april.PaidRequests);
+        Assert.Equal(0m, april.PaidAmount);
     }
 
     private async Task<Guid> CriarAprovarEPagarSolicitacaoAsync(
@@ -129,12 +129,16 @@ public sealed class DashboardAndPaymentsEndpointsTests : IClassFixture<CustomWeb
         Assert.NotNull(created);
 
         var submitResponse = await collaboratorClient.PostAsync($"/api/reimbursements/{created!.Id}/submit", null);
-        Assert.Equal(HttpStatusCode.NoContent, submitResponse.StatusCode);
+        if (submitResponse.StatusCode != HttpStatusCode.NoContent)
+        {
+            var body = await submitResponse.Content.ReadAsStringAsync();
+            throw new Xunit.Sdk.XunitException($"Falha ao enviar solicitação: {(int)submitResponse.StatusCode} - {body}");
+        }
 
         using var managerClient = _factory.CreateAuthenticatedClient("bruno@empresa.test", "Senha@123");
         var approveResponse = await managerClient.PostAsJsonAsync(
             $"/api/reimbursements/{created.Id}/approve",
-            new ApproveReimbursementRequest("Aprovado para pagamento"));
+            new ApproveReimbursementRequest(null, "Aprovado para pagamento"));
         Assert.Equal(HttpStatusCode.NoContent, approveResponse.StatusCode);
 
         using var financeClient = _factory.CreateAuthenticatedClient("fernanda@empresa.test", "Senha@123");

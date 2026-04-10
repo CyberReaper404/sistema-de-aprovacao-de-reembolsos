@@ -18,18 +18,18 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
     public async Task Colaborador_NaoDeveAprovarNemRecusarSolicitacao()
     {
         using var ownerClient = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
-        var created = await CriarSolicitacaoAsync(ownerClient, "Solicitação para aprovação", 90m, new DateOnly(2026, 4, 17), "Despesa operacional");
+        var created = await CriarSolicitacaoAsync(ownerClient, "Solicitação para aprovação", 90m, new DateOnly(2026, 4, 7), "Despesa operacional");
 
         var submitResponse = await ownerClient.PostAsync($"/api/reimbursements/{created.Id}/submit", null);
         Assert.Equal(HttpStatusCode.NoContent, submitResponse.StatusCode);
 
         var approveResponse = await ownerClient.PostAsJsonAsync(
             $"/api/reimbursements/{created.Id}/approve",
-            new ApproveReimbursementRequest("Tentativa indevida"));
+            new ApproveReimbursementRequest(null, "Tentativa indevida"));
 
         var rejectResponse = await ownerClient.PostAsJsonAsync(
             $"/api/reimbursements/{created.Id}/reject",
-            new RejectReimbursementRequest("Tentativa indevida"));
+            new RejectReimbursementRequest(DecisionReasonCode.Other, "Tentativa indevida"));
 
         Assert.Equal(HttpStatusCode.Forbidden, approveResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, rejectResponse.StatusCode);
@@ -43,7 +43,7 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
     public async Task Financeiro_NaoDeveEditarNemEnviarDraft()
     {
         using var collaboratorClient = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
-        var created = await CriarSolicitacaoAsync(collaboratorClient, "Rascunho protegido", 70m, new DateOnly(2026, 4, 18), "Despesa em rascunho");
+        var created = await CriarSolicitacaoAsync(collaboratorClient, "Rascunho protegido", 70m, new DateOnly(2026, 4, 6), "Despesa em rascunho");
 
         using var financeClient = _factory.CreateAuthenticatedClient("fernanda@empresa.test", "Senha@123");
         var updateResponse = await financeClient.PutAsJsonAsync(
@@ -53,7 +53,7 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
                 _factory.CategoryId,
                 75m,
                 "BRL",
-                new DateOnly(2026, 4, 18),
+                new DateOnly(2026, 4, 6),
                 "Tentativa de edição indevida",
                 created.RowVersion));
 
@@ -72,18 +72,18 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
     public async Task Financeiro_NaoDeveAprovarNemRecusarSolicitacao()
     {
         using var collaboratorClient = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
-        var created = await CriarSolicitacaoAsync(collaboratorClient, "Solicitação enviada", 90m, new DateOnly(2026, 4, 19), "Despesa aguardando decisão");
+        var created = await CriarSolicitacaoAsync(collaboratorClient, "Solicitação enviada", 90m, new DateOnly(2026, 4, 5), "Despesa aguardando decisão");
         var submitResponse = await collaboratorClient.PostAsync($"/api/reimbursements/{created.Id}/submit", null);
         Assert.Equal(HttpStatusCode.NoContent, submitResponse.StatusCode);
 
         using var financeClient = _factory.CreateAuthenticatedClient("fernanda@empresa.test", "Senha@123");
         var approveResponse = await financeClient.PostAsJsonAsync(
             $"/api/reimbursements/{created.Id}/approve",
-            new ApproveReimbursementRequest("Tentativa indevida"));
+            new ApproveReimbursementRequest(null, "Tentativa indevida"));
 
         var rejectResponse = await financeClient.PostAsJsonAsync(
             $"/api/reimbursements/{created.Id}/reject",
-            new RejectReimbursementRequest("Tentativa indevida"));
+            new RejectReimbursementRequest(DecisionReasonCode.Other, "Tentativa indevida"));
 
         Assert.Equal(HttpStatusCode.Forbidden, approveResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, rejectResponse.StatusCode);
@@ -120,7 +120,7 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
     public async Task Gestor_ForaDoEscopo_NaoDeveConsultarSolicitacao()
     {
         using var collaboratorClient = _factory.CreateAuthenticatedClient("debora@empresa.test", "Senha@123");
-        var created = await CriarSolicitacaoAsync(collaboratorClient, "Solicitação externa", 80m, new DateOnly(2026, 4, 15), "Despesa do outro centro");
+        var created = await CriarSolicitacaoAsync(collaboratorClient, "Solicitação externa", 80m, new DateOnly(2026, 4, 7), "Despesa do outro centro");
 
         using var managerClient = _factory.CreateAuthenticatedClient("bruno@empresa.test", "Senha@123");
         var detailResponse = await managerClient.GetAsync($"/api/reimbursements/{created.Id}");
@@ -132,14 +132,14 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
     public async Task Gestor_NaoDeveRegistrarPagamento()
     {
         using var collaboratorClient = _factory.CreateAuthenticatedClient("alice@empresa.test", "Senha@123");
-        var created = await CriarSolicitacaoAsync(collaboratorClient, "Pagamento indevido", 90m, new DateOnly(2026, 4, 16), "Teste de bloqueio por papel");
+        var created = await CriarSolicitacaoAsync(collaboratorClient, "Pagamento indevido", 90m, new DateOnly(2026, 4, 8), "Teste de bloqueio por papel");
         var submitResponse = await collaboratorClient.PostAsync($"/api/reimbursements/{created.Id}/submit", null);
         Assert.Equal(HttpStatusCode.NoContent, submitResponse.StatusCode);
 
         using var managerClient = _factory.CreateAuthenticatedClient("bruno@empresa.test", "Senha@123");
         var approveResponse = await managerClient.PostAsJsonAsync(
             $"/api/reimbursements/{created.Id}/approve",
-            new ApproveReimbursementRequest("Aprovado"));
+            new ApproveReimbursementRequest(null, "Aprovado"));
         Assert.Equal(HttpStatusCode.NoContent, approveResponse.StatusCode);
 
         var paymentResponse = await managerClient.PostAsJsonAsync(
@@ -162,7 +162,12 @@ public sealed class RoleAndScopeAuthorizationTests : IClassFixture<CustomWebAppl
             "BRL",
             expenseDate,
             description));
-        createResponse.EnsureSuccessStatusCode();
+        if (createResponse.StatusCode != HttpStatusCode.Created)
+        {
+            var body = await createResponse.Content.ReadAsStringAsync();
+            throw new Xunit.Sdk.XunitException($"Falha ao criar solicitação: {(int)createResponse.StatusCode} - {body}");
+        }
+
         var created = await createResponse.Content.ReadFromJsonAsync<ReimbursementDetailDto>();
         Assert.NotNull(created);
         return created!;

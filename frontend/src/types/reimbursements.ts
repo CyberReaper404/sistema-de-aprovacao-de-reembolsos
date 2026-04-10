@@ -1,5 +1,5 @@
 import type { PagedResult } from "@/types/common";
-import type { RequestStatus, WorkflowActionType } from "@/types/domain";
+import type { DecisionReasonCode, RequestStatus, WorkflowActionType } from "@/types/domain";
 
 export interface ReimbursementListItem {
   id: string;
@@ -20,6 +20,8 @@ export interface ReimbursementCategoryOption {
   description?: string | null;
   maxAmount?: number | null;
   receiptRequiredAboveAmount?: number | null;
+  receiptRequiredAlways?: boolean;
+  submissionDeadlineDays?: number | null;
 }
 
 export interface ReimbursementAllowedActions {
@@ -30,6 +32,7 @@ export interface ReimbursementAllowedActions {
   canRecordPayment: boolean;
   canUploadAttachment: boolean;
   canDeleteAttachment: boolean;
+  canRequestComplementation?: boolean;
 }
 
 export interface Attachment {
@@ -46,6 +49,7 @@ export interface WorkflowAction {
   fromStatus?: RequestStatus | null;
   toStatus: RequestStatus;
   performedByUserId: string;
+  reasonCode?: DecisionReasonCode | null;
   comment?: string | null;
   occurredAt: string;
 }
@@ -68,6 +72,10 @@ export interface ReimbursementDetail {
   approvedByUserId?: string | null;
   paidByUserId?: string | null;
   rejectionReason?: string | null;
+  decisionReasonCode?: DecisionReasonCode | null;
+  decisionComment?: string | null;
+  hasPendingComplementation?: boolean;
+  complementationRequestedAt?: string | null;
   submittedAt?: string | null;
   approvedAt?: string | null;
   rejectedAt?: string | null;
@@ -111,11 +119,18 @@ export interface UpdateReimbursementDraftPayload extends CreateReimbursementPayl
 }
 
 export interface ApproveReimbursementPayload {
+  reasonCode?: DecisionReasonCode;
   comment?: string;
 }
 
 export interface RejectReimbursementPayload {
-  reason: string;
+  reasonCode: DecisionReasonCode;
+  comment?: string;
+}
+
+export interface RequestComplementationPayload {
+  reasonCode: DecisionReasonCode;
+  comment?: string;
 }
 
 export interface RecordPaymentPayload {
@@ -125,3 +140,4 @@ export interface RecordPaymentPayload {
   amountPaid: number;
   notes?: string;
 }
+

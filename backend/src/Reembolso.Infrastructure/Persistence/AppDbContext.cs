@@ -83,6 +83,7 @@ public sealed class AppDbContext : DbContext
         entity.HasIndex(x => x.Name).IsUnique();
         entity.Property(x => x.MaxAmount).HasPrecision(18, 2);
         entity.Property(x => x.ReceiptRequiredAboveAmount).HasPrecision(18, 2);
+        entity.Property(x => x.SubmissionDeadlineDays);
     }
 
     private static void ConfigureReimbursements(ModelBuilder modelBuilder)
@@ -97,6 +98,8 @@ public sealed class AppDbContext : DbContext
         entity.Property(x => x.Description).HasMaxLength(1000).IsRequired();
         entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40).IsRequired();
         entity.Property(x => x.RejectionReason).HasMaxLength(500);
+        entity.Property(x => x.DecisionReasonCode).HasConversion<string>().HasMaxLength(60);
+        entity.Property(x => x.DecisionComment).HasMaxLength(500);
         entity.Property(x => x.RowVersion).IsConcurrencyToken();
         entity.HasIndex(x => x.RequestNumber).IsUnique();
         entity.HasIndex(x => new { x.CreatedByUserId, x.CreatedAt });
@@ -139,6 +142,7 @@ public sealed class AppDbContext : DbContext
         entity.Property(x => x.ActionType).HasConversion<string>().HasMaxLength(50).IsRequired();
         entity.Property(x => x.FromStatus).HasConversion<string>().HasMaxLength(40);
         entity.Property(x => x.ToStatus).HasConversion<string>().HasMaxLength(40).IsRequired();
+        entity.Property(x => x.ReasonCode).HasConversion<string>().HasMaxLength(60);
         entity.Property(x => x.Comment).HasMaxLength(500);
         entity.HasIndex(x => new { x.RequestId, x.OccurredAt });
         entity.HasOne(x => x.Request)
@@ -193,4 +197,3 @@ public sealed class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
-

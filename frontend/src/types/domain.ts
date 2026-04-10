@@ -21,7 +21,8 @@ export enum WorkflowActionType {
   Rejected = 5,
   AttachmentAdded = 6,
   AttachmentRemoved = 7,
-  PaymentRegistered = 8
+  PaymentRegistered = 8,
+  ComplementationRequested = 9
 }
 
 export enum PaymentMethod {
@@ -33,6 +34,26 @@ export enum PaymentMethod {
 export enum DashboardPeriodGrouping {
   Day = 1,
   Month = 2
+}
+
+export enum AuditSeverity {
+  Information = 1,
+  Warning = 2,
+  Critical = 3
+}
+
+export enum DecisionReasonCode {
+  MissingReceipt = 1,
+  InvalidReceipt = 2,
+  OutOfPolicy = 3,
+  OutOfDeadline = 4,
+  CategoryMismatch = 5,
+  DuplicateRequest = 6,
+  InconsistentAmount = 7,
+  FraudSuspicion = 8,
+  NeedMoreDetails = 9,
+  NeedAdditionalDocument = 10,
+  Other = 11
 }
 
 export const userRoleLabels: Record<UserRole, string> = {
@@ -58,11 +79,32 @@ export const workflowActionTypeLabels: Record<WorkflowActionType, string> = {
   [WorkflowActionType.Rejected]: "Solicitação recusada",
   [WorkflowActionType.AttachmentAdded]: "Anexo incluído",
   [WorkflowActionType.AttachmentRemoved]: "Anexo removido",
-  [WorkflowActionType.PaymentRegistered]: "Pagamento registrado"
+  [WorkflowActionType.PaymentRegistered]: "Pagamento registrado",
+  [WorkflowActionType.ComplementationRequested]: "Complementação solicitada"
 };
 
 export const paymentMethodLabels: Record<PaymentMethod, string> = {
   [PaymentMethod.BankTransfer]: "Transferência bancária",
   [PaymentMethod.Pix]: "Pix",
   [PaymentMethod.Other]: "Outro"
+};
+
+export const auditSeverityLabels: Record<AuditSeverity, string> = {
+  [AuditSeverity.Information]: "Informativo",
+  [AuditSeverity.Warning]: "Atenção",
+  [AuditSeverity.Critical]: "Crítico"
+};
+
+export const decisionReasonLabels: Record<DecisionReasonCode, string> = {
+  [DecisionReasonCode.MissingReceipt]: "Comprovante ausente",
+  [DecisionReasonCode.InvalidReceipt]: "Comprovante inválido",
+  [DecisionReasonCode.OutOfPolicy]: "Fora da política",
+  [DecisionReasonCode.OutOfDeadline]: "Fora do prazo",
+  [DecisionReasonCode.CategoryMismatch]: "Categoria incompatível",
+  [DecisionReasonCode.DuplicateRequest]: "Solicitação duplicada",
+  [DecisionReasonCode.InconsistentAmount]: "Valor inconsistente",
+  [DecisionReasonCode.FraudSuspicion]: "Suspeita de fraude",
+  [DecisionReasonCode.NeedMoreDetails]: "Mais detalhes necessários",
+  [DecisionReasonCode.NeedAdditionalDocument]: "Documento complementar necessário",
+  [DecisionReasonCode.Other]: "Outro"
 };

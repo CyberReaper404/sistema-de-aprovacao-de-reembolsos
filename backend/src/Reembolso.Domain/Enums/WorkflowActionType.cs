@@ -9,6 +9,6 @@ public enum WorkflowActionType
     Rejected = 5,
     AttachmentAdded = 6,
     AttachmentRemoved = 7,
-    PaymentRegistered = 8
+    PaymentRegistered = 8,
+    ComplementationRequested = 9
 }
-

@@ -48,10 +48,19 @@ public sealed class DashboardService : IDashboardService
     public async Task<IReadOnlyCollection<DashboardByStatusItemResponse>> GetByStatusAsync(DateOnly? from, DateOnly? to, CancellationToken cancellationToken)
     {
         var query = ApplyPeriod(await BuildScopedQueryAsync(), from, to);
-        return await query.GroupBy(x => x.Status)
+        var items = await query
+            .Select(x => new
+            {
+                x.Status,
+                x.Amount
+            })
+            .ToListAsync(cancellationToken);
+
+        return items
+            .GroupBy(x => x.Status)
             .Select(group => new DashboardByStatusItemResponse(group.Key, group.Count(), group.Sum(x => x.Amount)))
             .OrderBy(x => x.Status)
-            .ToListAsync(cancellationToken);
+            .ToArray();
     }
 
     public async Task<IReadOnlyCollection<DashboardByPeriodItemResponse>> GetByPeriodAsync(DashboardByPeriodQuery query, CancellationToken cancellationToken)

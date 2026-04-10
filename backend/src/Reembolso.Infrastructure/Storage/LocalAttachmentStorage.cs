@@ -19,6 +19,7 @@ public sealed class LocalAttachmentStorage : IAttachmentStorage
         var storedFileName = $"{Guid.NewGuid():N}{extension}";
         var destinationPath = Path.Combine(_rootPath, storedFileName);
 
+        Directory.CreateDirectory(_rootPath);
         await using var fileStream = File.Create(destinationPath);
         await content.CopyToAsync(fileStream, cancellationToken);
 

@@ -22,10 +22,14 @@ public class ReimbursementRequest
     public Guid? ApprovedByUserId { get; private set; }
     public Guid? PaidByUserId { get; private set; }
     public string? RejectionReason { get; private set; }
+    public DecisionReasonCode? DecisionReasonCode { get; private set; }
+    public string? DecisionComment { get; private set; }
+    public bool HasPendingComplementation { get; private set; }
     public DateTimeOffset? SubmittedAt { get; private set; }
     public DateTimeOffset? ApprovedAt { get; private set; }
     public DateTimeOffset? RejectedAt { get; private set; }
     public DateTimeOffset? PaidAt { get; private set; }
+    public DateTimeOffset? ComplementationRequestedAt { get; private set; }
     public Guid RowVersion { get; private set; } = Guid.NewGuid();
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
@@ -73,7 +77,10 @@ public class ReimbursementRequest
         string description,
         DateTimeOffset now)
     {
-        EnsureStatus(RequestStatus.Draft, "Somente rascunhos podem ser editados.");
+        if (Status != RequestStatus.Draft && !(Status == RequestStatus.Submitted && HasPendingComplementation))
+        {
+            throw new DomainRuleException("Somente rascunhos ou solicitações com complementação pendente podem ser editados.");
+        }
 
         Title = title.Trim();
         CategoryId = categoryId;
@@ -95,19 +102,58 @@ public class ReimbursementRequest
         TouchConcurrencyToken();
     }
 
-    public void Approve(Guid approvedByUserId, DateTimeOffset now)
+    public void ResubmitAfterComplementation(DateTimeOffset now)
+    {
+        EnsureStatus(RequestStatus.Submitted, "Somente solicitações enviadas podem reenviar complementação.");
+
+        if (!HasPendingComplementation)
+        {
+            throw new DomainRuleException("A solicitação não possui complementação pendente.");
+        }
+
+        HasPendingComplementation = false;
+        DecisionReasonCode = null;
+        DecisionComment = null;
+        ComplementationRequestedAt = null;
+        UpdatedAt = now;
+        TouchConcurrencyToken();
+    }
+
+    public void RequestComplementation(Guid approvedByUserId, DecisionReasonCode reasonCode, string? comment, DateTimeOffset now)
+    {
+        EnsureStatus(RequestStatus.Submitted, "A solicitação precisa estar enviada para solicitar complementação.");
+
+        HasPendingComplementation = true;
+        ApprovedByUserId = approvedByUserId;
+        DecisionReasonCode = reasonCode;
+        DecisionComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        ComplementationRequestedAt = now;
+        UpdatedAt = now;
+        TouchConcurrencyToken();
+    }
+
+    public void Approve(Guid approvedByUserId, DecisionReasonCode? reasonCode, string? comment, DateTimeOffset now)
     {
         EnsureStatus(RequestStatus.Submitted, "A solicitação precisa estar enviada para ser aprovada.");
+
+        if (HasPendingComplementation)
+        {
+            throw new DomainRuleException("A solicitação possui complementação pendente e não pode ser aprovada.");
+        }
 
         Status = RequestStatus.Approved;
         ApprovedByUserId = approvedByUserId;
         ApprovedAt = now;
         RejectionReason = null;
+        DecisionReasonCode = reasonCode;
+        DecisionComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        HasPendingComplementation = false;
+        ComplementationRequestedAt = null;
         UpdatedAt = now;
         TouchConcurrencyToken();
     }
 
-    public void Reject(Guid approvedByUserId, string reason, DateTimeOffset now)
+    public void Reject(Guid approvedByUserId, DecisionReasonCode reasonCode, string reason, DateTimeOffset now)
     {
         EnsureStatus(RequestStatus.Submitted, "A solicitação precisa estar enviada para ser recusada.");
 
@@ -115,6 +161,10 @@ public class ReimbursementRequest
         ApprovedByUserId = approvedByUserId;
         RejectedAt = now;
         RejectionReason = reason.Trim();
+        DecisionReasonCode = reasonCode;
+        DecisionComment = reason.Trim();
+        HasPendingComplementation = false;
+        ComplementationRequestedAt = null;
         UpdatedAt = now;
         TouchConcurrencyToken();
     }

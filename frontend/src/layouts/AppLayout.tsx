@@ -6,15 +6,28 @@ import type { NavigationItem } from "@/types/navigation";
 
 const navigationItems: NavigationItem[] = [
   { label: "Painel", to: "/", roles: [UserRole.Collaborator, UserRole.Manager, UserRole.Finance, UserRole.Administrator] },
-  {
-    label: "Solicitações",
-    to: "/solicitacoes",
-    roles: [UserRole.Collaborator, UserRole.Manager, UserRole.Finance, UserRole.Administrator]
-  },
+  { label: "Solicitações", to: "/solicitacoes", roles: [UserRole.Collaborator, UserRole.Manager, UserRole.Finance, UserRole.Administrator] },
   { label: "Nova solicitação", to: "/solicitacoes/nova", roles: [UserRole.Collaborator] },
   { label: "Pagamentos", to: "/pagamentos", roles: [UserRole.Finance, UserRole.Administrator] },
   { label: "Administração", to: "/admin", roles: [UserRole.Administrator] }
 ];
+
+function iconFor(label: string) {
+  switch (label) {
+    case "Painel":
+      return "□";
+    case "Solicitações":
+      return "▣";
+    case "Nova solicitação":
+      return "+";
+    case "Pagamentos":
+      return "◫";
+    case "Administração":
+      return "☰";
+    default:
+      return "•";
+  }
+}
 
 export function AppLayout() {
   const { session, logout } = useSession();
@@ -39,12 +52,10 @@ export function AppLayout() {
     <div className="app-shell">
       <aside className="app-shell__sidebar">
         <div className="app-shell__brand-block">
-          <div className="app-shell__brand-mark">
-            <strong>NIO</strong>
-          </div>
+          <div className="app-shell__brand-mark">N</div>
           <div className="app-shell__brand-copy">
             <span>NIO Ticket</span>
-            <small>Fluxo interno de reembolsos</small>
+            <small>Gestão de reembolsos</small>
           </div>
         </div>
 
@@ -54,25 +65,20 @@ export function AppLayout() {
               key={item.to}
               to={item.to}
               end={item.to === "/"}
-              className={({ isActive }) =>
-                isActive ? "app-shell__nav-link app-shell__nav-link--active" : "app-shell__nav-link"
-              }
+              className={({ isActive }) => (isActive ? "app-shell__nav-link app-shell__nav-link--active" : "app-shell__nav-link")}
             >
-              <span className="app-shell__nav-dot" aria-hidden="true" />
+              <span className="app-shell__nav-icon" aria-hidden="true">
+                {iconFor(item.label)}
+              </span>
               <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
 
-        <div className="app-shell__support">
-          <span>Ambiente seguro</span>
-          <p>O acesso e as ações seguem o papel do usuário autenticado.</p>
-        </div>
-
         <footer className="app-shell__footer">
           <div className="app-shell__user">
-            <div className="app-shell__avatar">{session.user.fullName.slice(0, 1)}</div>
-            <div>
+            <div className="app-shell__avatar">{session.user.fullName.slice(0, 1).toUpperCase()}</div>
+            <div className="app-shell__user-copy">
               <span>{session.user.fullName}</span>
               <small>{userRoleLabels[session.user.role]}</small>
             </div>
@@ -83,14 +89,11 @@ export function AppLayout() {
         </footer>
       </aside>
 
-      <div className="app-shell__main">
-        <div className="app-shell__topbar">
-          <p className="app-shell__topbar-copy">Painel operacional</p>
-        </div>
-        <main className="app-shell__content">
+      <main className="app-shell__main">
+        <div className="app-shell__surface">
           <Outlet />
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

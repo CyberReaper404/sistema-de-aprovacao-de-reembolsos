@@ -157,24 +157,49 @@ public sealed class AdminService : IAdminService
         EnsureAdmin();
         return await _dbContext.ReimbursementCategories
             .OrderBy(x => x.Name)
-            .Select(x => new CategoryResponse(x.Id, x.Name, x.Description, x.IsActive, x.MaxAmount, x.ReceiptRequiredAboveAmount))
+            .Select(x => new CategoryResponse(
+                x.Id,
+                x.Name,
+                x.Description,
+                x.IsActive,
+                x.MaxAmount,
+                x.ReceiptRequiredAboveAmount,
+                x.ReceiptRequiredAlways,
+                x.SubmissionDeadlineDays))
             .ToListAsync(cancellationToken);
     }
 
     public async Task<CategoryResponse> CreateCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken)
     {
         EnsureAdmin();
-        var entity = new ReimbursementCategory(request.Name, request.Description, request.MaxAmount, request.ReceiptRequiredAboveAmount, _dateTimeProvider.UtcNow);
+        var entity = new ReimbursementCategory(
+            request.Name,
+            request.Description,
+            request.MaxAmount,
+            request.ReceiptRequiredAboveAmount,
+            request.ReceiptRequiredAlways,
+            request.SubmissionDeadlineDays,
+            _dateTimeProvider.UtcNow);
         _dbContext.ReimbursementCategories.Add(entity);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await _auditService.WriteAsync("admin.category_created", "reimbursement_category", entity.Id.ToString(), AuditSeverity.Information, new
         {
             entity.Name,
             entity.MaxAmount,
-            entity.ReceiptRequiredAboveAmount
+            entity.ReceiptRequiredAboveAmount,
+            entity.ReceiptRequiredAlways,
+            entity.SubmissionDeadlineDays
         }, cancellationToken);
 
-        return new CategoryResponse(entity.Id, entity.Name, entity.Description, entity.IsActive, entity.MaxAmount, entity.ReceiptRequiredAboveAmount);
+        return new CategoryResponse(
+            entity.Id,
+            entity.Name,
+            entity.Description,
+            entity.IsActive,
+            entity.MaxAmount,
+            entity.ReceiptRequiredAboveAmount,
+            entity.ReceiptRequiredAlways,
+            entity.SubmissionDeadlineDays);
     }
 
     public async Task<CategoryResponse> UpdateCategoryAsync(Guid categoryId, UpdateCategoryRequest request, CancellationToken cancellationToken)
@@ -183,17 +208,35 @@ public sealed class AdminService : IAdminService
         var entity = await _dbContext.ReimbursementCategories.SingleOrDefaultAsync(x => x.Id == categoryId, cancellationToken)
             ?? throw new NotFoundAppException("Categoria não encontrada.");
 
-        entity.Update(request.Name, request.Description, request.MaxAmount, request.ReceiptRequiredAboveAmount, request.IsActive, _dateTimeProvider.UtcNow);
+        entity.Update(
+            request.Name,
+            request.Description,
+            request.MaxAmount,
+            request.ReceiptRequiredAboveAmount,
+            request.ReceiptRequiredAlways,
+            request.SubmissionDeadlineDays,
+            request.IsActive,
+            _dateTimeProvider.UtcNow);
         await _dbContext.SaveChangesAsync(cancellationToken);
         await _auditService.WriteAsync("admin.category_updated", "reimbursement_category", entity.Id.ToString(), AuditSeverity.Information, new
         {
             entity.Name,
             entity.IsActive,
             entity.MaxAmount,
-            entity.ReceiptRequiredAboveAmount
+            entity.ReceiptRequiredAboveAmount,
+            entity.ReceiptRequiredAlways,
+            entity.SubmissionDeadlineDays
         }, cancellationToken);
 
-        return new CategoryResponse(entity.Id, entity.Name, entity.Description, entity.IsActive, entity.MaxAmount, entity.ReceiptRequiredAboveAmount);
+        return new CategoryResponse(
+            entity.Id,
+            entity.Name,
+            entity.Description,
+            entity.IsActive,
+            entity.MaxAmount,
+            entity.ReceiptRequiredAboveAmount,
+            entity.ReceiptRequiredAlways,
+            entity.SubmissionDeadlineDays);
     }
 
     public async Task<PagedResult<AuditEntryResponse>> GetAuditEntriesAsync(int page, int pageSize, CancellationToken cancellationToken)

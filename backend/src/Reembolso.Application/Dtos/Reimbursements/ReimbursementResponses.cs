@@ -19,7 +19,9 @@ public sealed record ReimbursementCategoryOptionResponse(
     string Name,
     string? Description,
     decimal? MaxAmount,
-    decimal? ReceiptRequiredAboveAmount);
+    decimal? ReceiptRequiredAboveAmount,
+    bool ReceiptRequiredAlways,
+    int? SubmissionDeadlineDays);
 
 public sealed record ReimbursementDetailResponse(
     Guid Id,
@@ -39,10 +41,14 @@ public sealed record ReimbursementDetailResponse(
     Guid? ApprovedByUserId,
     Guid? PaidByUserId,
     string? RejectionReason,
+    DecisionReasonCode? DecisionReasonCode,
+    string? DecisionComment,
+    bool HasPendingComplementation,
     DateTimeOffset? SubmittedAt,
     DateTimeOffset? ApprovedAt,
     DateTimeOffset? RejectedAt,
     DateTimeOffset? PaidAt,
+    DateTimeOffset? ComplementationRequestedAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     string RowVersion,
@@ -55,6 +61,7 @@ public sealed record ReimbursementAllowedActions(
     bool CanSubmit,
     bool CanApprove,
     bool CanReject,
+    bool CanRequestComplementation,
     bool CanRecordPayment,
     bool CanUploadAttachment,
     bool CanDeleteAttachment);
@@ -72,5 +79,6 @@ public sealed record WorkflowActionResponse(
     RequestStatus? FromStatus,
     RequestStatus ToStatus,
     Guid PerformedByUserId,
+    DecisionReasonCode? ReasonCode,
     string? Comment,
     DateTimeOffset OccurredAt);

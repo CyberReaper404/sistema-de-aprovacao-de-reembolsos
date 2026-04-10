@@ -6,13 +6,15 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { reimbursementService } from "@/services/api";
 import { ApiError } from "@/services/http/api-error";
 import {
+  DecisionReasonCode,
   PaymentMethod,
   RequestStatus,
+  decisionReasonLabels,
   paymentMethodLabels,
   requestStatusLabels,
   workflowActionTypeLabels
 } from "@/types/domain";
-import type { Attachment, ReimbursementDetail } from "@/types/reimbursements";
+import type { Attachment, ReimbursementDetail, WorkflowAction } from "@/types/reimbursements";
 
 type StatusTone = "green" | "amber" | "red" | "slate";
 
@@ -22,6 +24,24 @@ const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", {
   dateStyle: "short",
   timeStyle: "short"
 });
+
+const rejectReasonOptions: DecisionReasonCode[] = [
+  DecisionReasonCode.MissingReceipt,
+  DecisionReasonCode.InvalidReceipt,
+  DecisionReasonCode.OutOfPolicy,
+  DecisionReasonCode.OutOfDeadline,
+  DecisionReasonCode.CategoryMismatch,
+  DecisionReasonCode.DuplicateRequest,
+  DecisionReasonCode.InconsistentAmount,
+  DecisionReasonCode.FraudSuspicion,
+  DecisionReasonCode.Other
+];
+
+const complementationReasonOptions: DecisionReasonCode[] = [
+  DecisionReasonCode.NeedMoreDetails,
+  DecisionReasonCode.NeedAdditionalDocument,
+  DecisionReasonCode.Other
+];
 
 function getStatusTone(status: RequestStatus): StatusTone {
   switch (status) {
@@ -84,6 +104,63 @@ function getDefaultPaidAtValue() {
   return localDate.toISOString().slice(0, 16);
 }
 
+function getDecisionHeading(detail: ReimbursementDetail) {
+  if (detail.hasPendingComplementation) {
+    return "Complementação solicitada";
+  }
+
+  switch (detail.status) {
+    case RequestStatus.Approved:
+      return "Solicitação aprovada";
+    case RequestStatus.Paid:
+      return "Solicitação paga";
+    case RequestStatus.Rejected:
+      return "Solicitação recusada";
+    default:
+      return "Sem decisão final";
+  }
+}
+
+function getDecisionReasonLabel(detail: ReimbursementDetail) {
+  if (detail.decisionReasonCode) {
+    return decisionReasonLabels[detail.decisionReasonCode];
+  }
+
+  if (detail.status === RequestStatus.Approved || detail.status === RequestStatus.Paid) {
+    return "Despesa validada";
+  }
+
+  if (detail.status === RequestStatus.Rejected) {
+    return "Solicitação recusada";
+  }
+
+  return null;
+}
+
+function getDecisionComment(detail: ReimbursementDetail) {
+  if (detail.decisionComment) {
+    return detail.decisionComment;
+  }
+
+  if (detail.rejectionReason) {
+    return detail.rejectionReason;
+  }
+
+  if (detail.hasPendingComplementation) {
+    return "A solicitação continua em análise até que a complementação pedida seja enviada.";
+  }
+
+  if (detail.status === RequestStatus.Approved || detail.status === RequestStatus.Paid) {
+    return "A solicitação foi aprovada após conferência do comprovante, do valor e do enquadramento da despesa.";
+  }
+
+  return null;
+}
+
+function getWorkflowReasonLabel(action: WorkflowAction) {
+  return action.reasonCode ? decisionReasonLabels[action.reasonCode] : null;
+}
+
 export function ReimbursementDetailView() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<ReimbursementDetail | null>(null);
@@ -94,6 +171,9 @@ export function ReimbursementDetailView() {
   const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const [approveComment, setApproveComment] = useState("");
   const [rejectReason, setRejectReason] = useState("");
+  const [rejectReasonCode, setRejectReasonCode] = useState<DecisionReasonCode>(DecisionReasonCode.MissingReceipt);
+  const [complementationComment, setComplementationComment] = useState("");
+  const [complementationReasonCode, setComplementationReasonCode] = useState<DecisionReasonCode>(DecisionReasonCode.NeedAdditionalDocument);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.Pix);
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
@@ -128,9 +208,7 @@ export function ReimbursementDetailView() {
       } catch (error) {
         if (!isCancelled) {
           const message =
-            error instanceof ApiError
-              ? error.message
-              : "Não foi possível carregar o detalhe da solicitação.";
+            error instanceof ApiError ? error.message : "Não foi possível carregar o detalhe da solicitação.";
 
           setErrorMessage(message);
         }
@@ -180,6 +258,10 @@ export function ReimbursementDetailView() {
       actions.push("Recusar");
     }
 
+    if (detail.allowedActions.canRequestComplementation) {
+      actions.push("Solicitar complementação");
+    }
+
     if (detail.allowedActions.canRecordPayment) {
       actions.push("Registrar pagamento");
     }
@@ -207,9 +289,7 @@ export function ReimbursementDetailView() {
       saveDownloadedFile(file.content, file.fileName ?? attachment.originalFileName);
     } catch (error) {
       const message =
-        error instanceof ApiError
-          ? error.message
-          : "Não foi possível baixar o anexo selecionado.";
+        error instanceof ApiError ? error.message : "Não foi possível baixar o anexo selecionado.";
 
       setErrorMessage(message);
     } finally {
@@ -239,9 +319,7 @@ export function ReimbursementDetailView() {
       setActionSuccessMessage("Solicitação enviada com sucesso.");
     } catch (error) {
       const message =
-        error instanceof ApiError
-          ? error.message
-          : "Não foi possível enviar a solicitação.";
+        error instanceof ApiError ? error.message : "Não foi possível enviar a solicitação.";
 
       setErrorMessage(message);
     } finally {
@@ -260,15 +338,15 @@ export function ReimbursementDetailView() {
       setIsSubmittingAction(true);
       setActionSuccessMessage(null);
       setErrorMessage(null);
-      await reimbursementService.approve(detail.id, { comment: approveComment.trim() || undefined });
+      await reimbursementService.approve(detail.id, {
+        comment: approveComment.trim()
+      });
       await reloadDetail();
       setApproveComment("");
       setActionSuccessMessage("Solicitação aprovada com sucesso.");
     } catch (error) {
       const message =
-        error instanceof ApiError
-          ? error.message
-          : "Não foi possível aprovar a solicitação.";
+        error instanceof ApiError ? error.message : "Não foi possível aprovar a solicitação.";
 
       setErrorMessage(message);
     } finally {
@@ -287,15 +365,46 @@ export function ReimbursementDetailView() {
       setIsSubmittingAction(true);
       setActionSuccessMessage(null);
       setErrorMessage(null);
-      await reimbursementService.reject(detail.id, { reason: rejectReason.trim() });
+      await reimbursementService.reject(detail.id, {
+        reasonCode: rejectReasonCode,
+        comment: rejectReason.trim() || undefined
+      });
       await reloadDetail();
       setRejectReason("");
+      setRejectReasonCode(DecisionReasonCode.MissingReceipt);
       setActionSuccessMessage("Solicitação recusada com sucesso.");
     } catch (error) {
       const message =
-        error instanceof ApiError
-          ? error.message
-          : "Não foi possível recusar a solicitação.";
+        error instanceof ApiError ? error.message : "Não foi possível recusar a solicitação.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const handleRequestComplementation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!detail) {
+      return;
+    }
+
+    try {
+      setIsSubmittingAction(true);
+      setActionSuccessMessage(null);
+      setErrorMessage(null);
+      await reimbursementService.requestComplementation(detail.id, {
+        reasonCode: complementationReasonCode,
+        comment: complementationComment.trim() || undefined
+      });
+      await reloadDetail();
+      setComplementationComment("");
+      setComplementationReasonCode(DecisionReasonCode.NeedAdditionalDocument);
+      setActionSuccessMessage("Complementação solicitada com sucesso.");
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : "Não foi possível solicitar complementação.";
 
       setErrorMessage(message);
     } finally {
@@ -326,9 +435,7 @@ export function ReimbursementDetailView() {
       setActionSuccessMessage("Pagamento registrado com sucesso.");
     } catch (error) {
       const message =
-        error instanceof ApiError
-          ? error.message
-          : "Não foi possível registrar o pagamento.";
+        error instanceof ApiError ? error.message : "Não foi possível registrar o pagamento.";
 
       setErrorMessage(message);
     } finally {
@@ -369,6 +476,9 @@ export function ReimbursementDetailView() {
     );
   }
 
+  const decisionReasonLabel = getDecisionReasonLabel(detail);
+  const decisionComment = getDecisionComment(detail);
+
   return (
     <div className="workspace-page">
       <PageHeader
@@ -377,9 +487,7 @@ export function ReimbursementDetailView() {
         description={detail.title}
         actions={
           <div className="detail-header__actions">
-            <StatusBadge tone={getStatusTone(detail.status)}>
-              {requestStatusLabels[detail.status]}
-            </StatusBadge>
+            <StatusBadge tone={getStatusTone(detail.status)}>{requestStatusLabels[detail.status]}</StatusBadge>
             {detail.allowedActions.canEditDraft ? (
               <Link className="ui-button ui-button--secondary" to={`/solicitacoes/${detail.id}/editar`}>
                 Editar rascunho
@@ -430,12 +538,13 @@ export function ReimbursementDetailView() {
             <p>{detail.description}</p>
           </div>
 
-          {detail.rejectionReason ? (
+          {(decisionReasonLabel || decisionComment) && (
             <div className="detail-alert">
-              <span>Motivo da recusa</span>
-              <p>{detail.rejectionReason}</p>
+              <span>{getDecisionHeading(detail)}</span>
+              {decisionReasonLabel ? <strong>{decisionReasonLabel}</strong> : null}
+              {decisionComment ? <p>{decisionComment}</p> : null}
             </div>
-          ) : null}
+          )}
         </div>
 
         <div className="detail-card detail-card--side">
@@ -452,6 +561,10 @@ export function ReimbursementDetailView() {
             <div>
               <span>Recusada em</span>
               <strong>{formatDateTime(detail.rejectedAt)}</strong>
+            </div>
+            <div>
+              <span>Complementação pedida em</span>
+              <strong>{formatDateTime(detail.complementationRequestedAt)}</strong>
             </div>
             <div>
               <span>Paga em</span>
@@ -492,15 +605,16 @@ export function ReimbursementDetailView() {
           {detail.allowedActions.canApprove ? (
             <form className="detail-action-panel" onSubmit={handleApprove}>
               <h3>Aprovar solicitação</h3>
-              <p>O comentário é opcional e fica registrado no histórico do workflow.</p>
+              <p>A justificativa da aprovação é obrigatória e será exibida no histórico e no protocolo.</p>
               <label className="form-field form-field--compact">
-                <span>Comentário</span>
+                <span>Justificativa da aprovação</span>
                 <textarea
                   rows={3}
                   value={approveComment}
                   onChange={(event) => setApproveComment(event.target.value)}
-                  placeholder="Observação interna para registrar na aprovação."
+                  placeholder="Explique por que a solicitação foi aprovada."
                   disabled={isSubmittingAction}
+                  required
                 />
               </label>
               <button className="ui-button ui-button--primary" type="submit" disabled={isSubmittingAction}>
@@ -512,20 +626,69 @@ export function ReimbursementDetailView() {
           {detail.allowedActions.canReject ? (
             <form className="detail-action-panel" onSubmit={handleReject}>
               <h3>Recusar solicitação</h3>
-              <p>A justificativa é obrigatória e precisa explicar o motivo da recusa.</p>
+              <p>Selecione o motivo da recusa e detalhe a decisão quando necessário.</p>
               <label className="form-field form-field--compact">
-                <span>Motivo da recusa</span>
+                <span>Motivo padronizado</span>
+                <select
+                  value={rejectReasonCode}
+                  onChange={(event) => setRejectReasonCode(Number(event.target.value) as DecisionReasonCode)}
+                  disabled={isSubmittingAction}
+                >
+                  {rejectReasonOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {decisionReasonLabels[value]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-field form-field--compact">
+                <span>Observação da recusa</span>
                 <textarea
                   rows={4}
                   value={rejectReason}
                   onChange={(event) => setRejectReason(event.target.value)}
                   placeholder="Descreva claramente o motivo da recusa."
                   disabled={isSubmittingAction}
-                  required
+                  required={rejectReasonCode === DecisionReasonCode.Other}
                 />
               </label>
               <button className="ui-button ui-button--primary" type="submit" disabled={isSubmittingAction}>
                 {isSubmittingAction ? "Recusando..." : "Recusar"}
+              </button>
+            </form>
+          ) : null}
+
+          {detail.allowedActions.canRequestComplementation ? (
+            <form className="detail-action-panel" onSubmit={handleRequestComplementation}>
+              <h3>Solicitar complementação</h3>
+              <p>Registre o motivo da complementação para orientar o colaborador e manter a trilha auditável.</p>
+              <label className="form-field form-field--compact">
+                <span>Motivo padronizado</span>
+                <select
+                  value={complementationReasonCode}
+                  onChange={(event) => setComplementationReasonCode(Number(event.target.value) as DecisionReasonCode)}
+                  disabled={isSubmittingAction}
+                >
+                  {complementationReasonOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {decisionReasonLabels[value]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-field form-field--compact">
+                <span>Orientação para o colaborador</span>
+                <textarea
+                  rows={4}
+                  value={complementationComment}
+                  onChange={(event) => setComplementationComment(event.target.value)}
+                  placeholder="Explique o que precisa ser complementado."
+                  disabled={isSubmittingAction}
+                  required={complementationReasonCode === DecisionReasonCode.Other}
+                />
+              </label>
+              <button className="ui-button ui-button--primary" type="submit" disabled={isSubmittingAction}>
+                {isSubmittingAction ? "Registrando..." : "Solicitar complementação"}
               </button>
             </form>
           ) : null}
@@ -638,7 +801,7 @@ export function ReimbursementDetailView() {
       <section className="workspace-section">
         <div className="section-title">
           <h2>Histórico do workflow</h2>
-          <p>Cada transição mostra o estado resultante e os comentários registrados no backend.</p>
+          <p>Cada transição mostra o estado resultante e os motivos registrados pela análise.</p>
         </div>
 
         {detail.workflowActions.length === 0 ? (
@@ -648,21 +811,30 @@ export function ReimbursementDetailView() {
           </div>
         ) : (
           <div className="timeline-list">
-            {detail.workflowActions.map((action) => (
-              <article key={action.id} className="timeline-item">
-                <div className="timeline-item__marker" aria-hidden="true" />
-                <div className="timeline-item__content">
-                  <div className="timeline-item__header">
-                    <strong>{workflowActionTypeLabels[action.actionType]}</strong>
-                    <span>{formatDateTime(action.occurredAt)}</span>
+            {detail.workflowActions.map((action) => {
+              const reasonLabel = getWorkflowReasonLabel(action);
+
+              return (
+                <article key={action.id} className="timeline-item">
+                  <div className="timeline-item__marker" aria-hidden="true" />
+                  <div className="timeline-item__content">
+                    <div className="timeline-item__header">
+                      <strong>{workflowActionTypeLabels[action.actionType]}</strong>
+                      <span>{formatDateTime(action.occurredAt)}</span>
+                    </div>
+                    <p>
+                      Status resultante: <strong>{requestStatusLabels[action.toStatus]}</strong>
+                    </p>
+                    {reasonLabel ? (
+                      <p>
+                        Motivo: <strong>{reasonLabel}</strong>
+                      </p>
+                    ) : null}
+                    {action.comment ? <p>Observação: {action.comment}</p> : null}
                   </div>
-                  <p>
-                    Status resultante: <strong>{requestStatusLabels[action.toStatus]}</strong>
-                  </p>
-                  {action.comment ? <p>{action.comment}</p> : null}
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
